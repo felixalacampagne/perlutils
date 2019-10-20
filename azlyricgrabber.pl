@@ -92,15 +92,10 @@ my $ere = qr/<!-- album songlists end -->/;
       while($content =~ /$pat/g ) 
       {
          # print "$1 $2\n";
-         #my %pageref = (
-         #   page => $1,
-         #   title => $2);
-         #push(@songpages, %pageref);
-         #my @pageref = ($1, $2);
-         #push(@songpages, @pageref);
-         # Hours wasted only to eventually realise that perl does not support arrays of
-         # arrays or arrays of hashes!
-         push(@songpages, $1);
+         my %pageref = (
+            page => $1,
+            title => $2);
+         push(@songpages, \%pageref);
       }
    }
    else
@@ -113,7 +108,7 @@ my $ere = qr/<!-- album songlists end -->/;
 sub fmtSong
 {
 my ($title, $lyric) = @_;   
-   return "<song>\n<title>\n" . $title . "\n</title>\n<lyric>\n" . $lyric . "\n</lyric>\n</song>\n";
+   return "<song>\n<title>" . $title . "</title>\n<lyric>\n" . $lyric . "\n</lyric>\n</song>\n";
 }
 ###############################################################
 ###############################################################
@@ -127,8 +122,8 @@ my ($title, $lyric) = @_;
 my $num_args = $#ARGV + 1;
 
 
-my $murl=$ARGV[0];
-#$murl = Win32::Clipboard()->Get();
+my $murl;# =$ARGV[0];
+$murl = Win32::Clipboard()->Get();
 my $lyrics = "<songs>\n";
 my $baseurl;
 my $lyrpage;
@@ -147,8 +142,8 @@ my @songpages = getSongPages($lyrpage);
    {
       #print "page: " . %{$pageref}{"page"} . "\n";
       # . "   title: " . $pageref->title . "\n";
-      my $page = $pageref;
-      my $title = $pageref;
+      my $page = $pageref->{page};
+      my $title = $pageref->{title};
       my $url = $baseurl . $page;
       #print "page: " . $pageref . "  URL: " . $url ;
       $lyrpage = geturl( $url);
