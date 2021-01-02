@@ -8,6 +8,8 @@
 # it would be nicer to use the google search link directly. This requires extracting the real URL
 # which is embedded in a link to google.
 # 01-Jan-2021 First version of extracting URL from google search link
+# 02-Jan-2021 Uses URI to extract params from google search link. Reparses the original page for lyric
+#             instead of getting it twice
 use strict;
 use warnings;
 use Win32::Clipboard;
@@ -65,7 +67,7 @@ if($content =~ m/$sre(.*)$ere/s)
    # print "Found lyric is:\n" . $lyric;
    $lyric =~ s/’/'/g;
    $lyric =~ s/‘/'/g;
-   # TIP: To determine what to search for use "View Source" and see what UE displays. Using the
+   # TIP: To determine what to search for save the page and see what UE displays. Using the
    # characters displayed in the DOS box or after processing by Perl does not work.
    $lyric =~ s/“/"/g;
    $lyric =~ s/”/"/g;
@@ -73,6 +75,7 @@ if($content =~ m/$sre(.*)$ere/s)
    
    #$lyric =~ s/<br>/\n/g;
    $lyric =~ s/<.*?>//gm;
+   $lyric =~ s/&quot;/'/g;
 
 }
 else
@@ -163,33 +166,47 @@ my $murl;# =$ARGV[0];
 $murl = Win32::Clipboard()->Get();
 my $lyrics = "<songs>\n";
 my $baseurl;
+my $origurl;
+my $origcontent;
 my $lyrpage;
 my $lyric;
 
-$murl = getLinkFromGoogle($murl); 
+$origurl = getLinkFromGoogle($murl); 
+print "Parsing links: ";
+$origcontent = geturl($origurl);
+my @songpages = getSongPages($origcontent);
 
-($baseurl) = $murl =~ m/(.*\/).*$/;
+($baseurl) = $origurl =~ m/(.*\/).*$/;
 
-# The current page is not listed in the links. Currently means the song from the source
-# page does not have a title in the output
-$lyrpage = geturl($murl);
-# my $lyric = azlyricextract($murl);
-# $lyrics = $lyrics . fmtSong("", $lyric);
+# The current page contains the lyrics for one of the tracks. At the moment
+# the page is reloaded in the loop below which perhaps contributes to the suspicisou
+# behaviour. So need a way to parse the already loaded content as part of the 
+# loop...
+# Maybe the easiest is to keep the original page and url. Then in the loop check if the loop
+# url matches the original url and use the original page content, otherwise load the
+# page.
 
-my @songpages = getSongPages($lyrpage);
 foreach my $pageref (@songpages)
 {
-   # AZLyrics keeps locking me out due to unusual activity
-   # assuming this is because all pages are fetched too rapidly
-   # so try to emulate me right-clicking and loading in another tab...
-   sleep (5 + int(rand(10)));
-   #print "page: " . %{$pageref}{"page"} . "\n";
-   # . "   title: " . $pageref->title . "\n";
+
    my $page = $pageref->{page};
    my $title = $pageref->{title};
    my $url = $baseurl . $page;
-   #print "page: " . $pageref . "  URL: " . $url ;
-   $lyrpage = geturl( $url);
+   
+   if($url eq $origurl)
+   {
+      print "$title: Parsing original url content\n";
+      $lyrpage = $origcontent;   
+   }
+   else
+   {
+      # AZLyrics keeps locking me out due to unusual activity
+      # assuming this is because all pages are fetched too rapidly
+      # so try to emulate me right-clicking and loading in another tab...
+      sleep (5 + int(rand(10)));
+      print "$title: Loading content: ";
+      $lyrpage = geturl($url);
+   }
    $lyric = azlyricextract($lyrpage);
    $lyrics = $lyrics . fmtSong($title, $lyric);
 }
