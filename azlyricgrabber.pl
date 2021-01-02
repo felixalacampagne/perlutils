@@ -12,6 +12,8 @@ use Win32::Clipboard;
 use LWP::UserAgent;
 use LWP::Protocol::https;
 use IO::Socket::SSL qw( SSL_VERIFY_NONE );
+use URI::Escape;
+
 
 sub geturl
 {
@@ -22,7 +24,16 @@ my $ua = LWP::UserAgent->new(ssl_opts => {verify_hostname => 0, SSL_verify_mode 
 
 $ua->timeout(10);
 
-my $response = $ua->get( $url );
+
+# Use Opera user-agent string to try to avoid the 'unusual activity' rejection 
+# 
+  my @headers = (
+'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36 OPR/65.0.3467.78',
+'Accept' => 'text/html, image/gif, image/jpeg, image/png, */*',
+'Accept-Charset' => 'iso-8859-1,*,utf-8',
+'Accept-Language' => 'en-US',
+);
+my $response = $ua->get( $url, @headers);
 
 #print "HTTP status: ", $response->status_line( ), "\n"; #dbg
 #print "Response content: ", $response->content(), "\n"; #dbg
@@ -110,6 +121,23 @@ sub fmtSong
 my ($title, $lyric) = @_;   
    return "<song>\n<title>" . $title . "</title>\n<lyric>\n" . $lyric . "\n</lyric>\n</song>\n";
 }
+
+
+sub getLinkFromGoogle
+{
+my ($rawurl) =@_;
+my $sre = qr#https://www.google.com/url?#;
+
+   # https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&cad=rja&uact=8&ved=2ahUKEwi4wqa2l_vtAhVGzKQKHVlXAKEQFjADegQIARAC&url=https%3A%2F%2Fwww.azlyrics.com%2Flyrics%2Fjoanosborne%2Fwherewestart.html&usg=AOvVaw1allyhbzRU4ATQ200OxJtp
+   if($rawurl =~ m/^$sre.*?&url=(.*?)&.*$/s)
+   {
+      my $encurl = $1;
+      print "Found a Google URL: $encurl\n";
+      $rawurl = uri_unescape($encurl);
+      print "Decoded URL: $rawurl\n";
+   }
+   return $rawurl;
+}
 ###############################################################
 ###############################################################
 ####                    #######################################
@@ -129,6 +157,12 @@ my $baseurl;
 my $lyrpage;
 my $lyric;
 
+
+# Google search page links contain the real link embedded in google garbage and urlencoded
+# https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&cad=rja&uact=8&ved=2ahUKEwi4wqa2l_vtAhVGzKQKHVlXAKEQFjADegQIARAC&url=https%3A%2F%2Fwww.azlyrics.com%2Flyrics%2Fjoanosborne%2Fwherewestart.html&usg=AOvVaw1allyhbzRU4ATQ200OxJtp
+$murl = getLinkFromGoogle($murl); 
+
+
 ($baseurl) = $murl =~ m/(.*\/).*$/;
 
 # The current page is not listed in the links. Currently means the song from the source
@@ -140,6 +174,10 @@ $lyrpage = geturl($murl);
 my @songpages = getSongPages($lyrpage);
    foreach my $pageref (@songpages)
    {
+      # AZLyrics keeps locking me out due to unusual activity
+      # assuming this is because all pages are fetched too rapidly
+      # so try to emulate me right-clicking and loading in another tab...
+      sleep (5 + int(rand(10)));
       #print "page: " . %{$pageref}{"page"} . "\n";
       # . "   title: " . $pageref->title . "\n";
       my $page = $pageref->{page};
