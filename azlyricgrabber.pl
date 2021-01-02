@@ -14,8 +14,9 @@ use Win32::Clipboard;
 use LWP::UserAgent;
 use LWP::Protocol::https;
 use IO::Socket::SSL qw( SSL_VERIFY_NONE );
+use URI;
 use URI::Escape;
-
+use URI::QueryParam;
 
 sub geturl
 {
@@ -128,16 +129,22 @@ my ($title, $lyric) = @_;
 sub getLinkFromGoogle
 {
 my ($rawurl) =@_;
-my $sre = qr#https://www.google.com/url?#;
+my $uri;
 
+
+   $uri = URI->new($rawurl);
+   # NB. authority = host, path has leading /, params is all parameters concatenated.
+   # printf("Host: %s, params: %s, path: %s, authority: %s\n", lc($uri->host), $uri->query, $uri->path, $uri->authority);
+   
    # https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&cad=rja&uact=8&ved=2ahUKEwi4wqa2l_vtAhVGzKQKHVlXAKEQFjADegQIARAC&url=https%3A%2F%2Fwww.azlyrics.com%2Flyrics%2Fjoanosborne%2Fwherewestart.html&usg=AOvVaw1allyhbzRU4ATQ200OxJtp
-   if($rawurl =~ m/^$sre.*?&url=(.*?)&.*$/s)
+   if($uri->host =~ /.*?\.google\..*/i) #if($rawurl =~ m/^$sre.*?&url=(.*?)&.*$/s)
    {
-      my $encurl = $1;
-      print "Found a Google URL: $encurl\n";
-      $rawurl = uri_unescape($encurl);
-      print "Decoded URL: $rawurl\n";
+      # printf("URL param: %s\n", $uri->query_param("url"));
+      # query_param appears to return the decoded parameter valu
+      $rawurl = $uri->query_param("url");
+      print "Found a Google search URL: $rawurl\n";
    }
+
    return $rawurl;
 }
 ###############################################################
@@ -159,11 +166,7 @@ my $baseurl;
 my $lyrpage;
 my $lyric;
 
-
-# Google search page links contain the real link embedded in google garbage and urlencoded
-# https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&cad=rja&uact=8&ved=2ahUKEwi4wqa2l_vtAhVGzKQKHVlXAKEQFjADegQIARAC&url=https%3A%2F%2Fwww.azlyrics.com%2Flyrics%2Fjoanosborne%2Fwherewestart.html&usg=AOvVaw1allyhbzRU4ATQ200OxJtp
 $murl = getLinkFromGoogle($murl); 
-
 
 ($baseurl) = $murl =~ m/(.*\/).*$/;
 
@@ -174,27 +177,24 @@ $lyrpage = geturl($murl);
 # $lyrics = $lyrics . fmtSong("", $lyric);
 
 my @songpages = getSongPages($lyrpage);
-   foreach my $pageref (@songpages)
-   {
-      # AZLyrics keeps locking me out due to unusual activity
-      # assuming this is because all pages are fetched too rapidly
-      # so try to emulate me right-clicking and loading in another tab...
-      sleep (5 + int(rand(10)));
-      #print "page: " . %{$pageref}{"page"} . "\n";
-      # . "   title: " . $pageref->title . "\n";
-      my $page = $pageref->{page};
-      my $title = $pageref->{title};
-      my $url = $baseurl . $page;
-      #print "page: " . $pageref . "  URL: " . $url ;
-      $lyrpage = geturl( $url);
-      $lyric = azlyricextract($lyrpage);
-      $lyrics = $lyrics . fmtSong($title, $lyric);
-   }
+foreach my $pageref (@songpages)
+{
+   # AZLyrics keeps locking me out due to unusual activity
+   # assuming this is because all pages are fetched too rapidly
+   # so try to emulate me right-clicking and loading in another tab...
+   sleep (5 + int(rand(10)));
+   #print "page: " . %{$pageref}{"page"} . "\n";
+   # . "   title: " . $pageref->title . "\n";
+   my $page = $pageref->{page};
+   my $title = $pageref->{title};
+   my $url = $baseurl . $page;
+   #print "page: " . $pageref . "  URL: " . $url ;
+   $lyrpage = geturl( $url);
+   $lyric = azlyricextract($lyrpage);
+   $lyrics = $lyrics . fmtSong($title, $lyric);
+}
 
 $lyrics = $lyrics . "</songs>\n";
-# download each page and extract lyric, merging into a 
-# single file with xml-like tags marking the tracks which can
-# then be processed by a UE script?
 
 print $lyrics;
 Win32::Clipboard()->Set($lyrics);
