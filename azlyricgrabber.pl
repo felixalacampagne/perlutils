@@ -1,11 +1,13 @@
 #!/usr/bin/perl
-# Obsolete - functionality implemented as a chromium browser extension...
-#
 # Ideally it would be possible to drag an azlyric link from IE and drop it on the grabber which would then
 # receive the URL as the first parameter. Unfortunately windows pops up a stupid message and the script
-# doesn't get invoked at all. Smae thing from Chrome (without the stupid message).
+# doesn't get invoked at all. Same thing from Chrome (without the stupid message).
 # So, next easiest way to use that I can think of is to copy link to the clipboard and have
-# the script try to load whatever is on the clipboard as a url
+# the script try to load whatever is on the clipboard as a url.
+# Rather than load the result of a google search in the browser and then reload the page in the grabber
+# it would be nicer to use the google search link directly. This requires extracting the real URL
+# which is embedded in a link to google.
+# 01-Jan-2021 First version of extracting URL from google search link
 use strict;
 use warnings;
 use Win32::Clipboard;
