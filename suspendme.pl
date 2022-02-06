@@ -1,4 +1,10 @@
 #!/usr/bin/perl
+# 30-04-2018 Raises a custom Windows event shortly before forcing sleep. This allows a
+#            Task with elevated privileges to be executed by triggering on the event. The primary
+#            use of this is to remove the "wake to run" flag from the Microsoft tasks which are
+#            probably the cause of the Internet radio turning on in the middle of the night. The
+#            windows "going to sleep" event does not work in a trigger - apparently because it is 
+#            only logged when the computer wake up!
 # 30-05-2017 Windows has broken sleep and Task Scheduler wont wake up when "rundll32.exe powrprof.dll,SetSuspendState 0,0,0"
 #            is used to send the machine to sleep (this is probably because rundll32 does not pass the parameters to the function
 #            as one would expect from the command line, according to Google, resulting in the SetSuspendState being called with the
@@ -10,6 +16,7 @@
 
 use strict;
 use Win32::API;
+use Win32::EventLog;
 use Getopt::Long;
 use Time::Seconds;
 Getopt::Long::Configure("pass_through", "bundling_override");
@@ -32,7 +39,7 @@ my $startsecs = time();
 if($sleep > 0)
 {
    $ts = time2date($startsecs + $sleep);
-   print "System will be suspended at $ts";
+   print "suspendme: System will be suspended at $ts";
 }
 
 my $elapsed=0;
@@ -48,11 +55,30 @@ my $remain;
    niteynitey();
    
 $ts = time2date(time());
-print "Done at $ts\n";
+# This only gets printed AFTER the resume from sleep
+# BUT might be useful in case the sleep is not working...
+print "suspendme: Done at $ts\n";
 exit(0);
 
 
+sub writeeventlog {
+my ($id, $msg) = @_;
+   
+   my $eventLog = Win32::EventLog->new('Application');
 
+   my %eventRecord = (
+           #'Computer' => undef,
+           'Source' => 'SmallCatUtilities',
+           'EventType' => EVENTLOG_INFORMATION_TYPE,
+           'Category' => 0, #NULL,
+           'EventID' => $id,
+           'Strings' => $msg,
+           'Data' => 'Data: This does not appear in the event log',
+           );
+
+   $eventLog->Report(\%eventRecord);
+   $eventLog->Close();
+}
 # Can't seem to find a standard Perl way to output a time in a readable format
 sub time2date
 {
@@ -113,26 +139,30 @@ $sec = $sec%60;
 }
 sub niteynitey
 {
-   my $BOOLEAN_Hibernate = 0;
-   my $BOOLEAN_ForceCritical = 0;
-   my $BOOLEAN_DisableWakeEvent = 0;
+my $BOOLEAN_Hibernate = 0;
+my $BOOLEAN_ForceCritical = 0;
+my $BOOLEAN_DisableWakeEvent = 0;
+my $ts;
    # Unfortunately this does not work with the Perl available at "some sites" - I guess I am using
    # a version which is too uptodate
    #my $SetThreadExecutionState = Win32::API::More->new('kernel32', 'SetThreadExecutionState', 'N', 'N');
    
-   # So this version of the command doesn't give an error with AS Perl 5.14. I have no idea whether
-   # it works (the other form does stop sleep from occurring) - that needs to be tested in a sleep prone
-   # environment :-)
+   # This version of the command doesn't give an error with AS Perl 5.14.
    my $SetSuspendState = new Win32::API('PowrProf', 'SetSuspendState', 'III', 'I');
    if (defined $SetSuspendState) 
    {
-      # This should just reset the idle timer back to zero
-      #print "Calling SetThreadExecutionState with 'System Required'\n";
+      # The event can be used to execute a pre-sleep action requiring elevated permissions
+      # without the UAC popup by configuring a Task to trigger on the event.
+      writeeventlog(1961, "suspendme: System sleep notification.");
+      
+      # Give the event handler time to perform its actions
+      sleep 10;
+      $ts = time2date(time());
+      print "suspendme: Sending system to sleep at $ts\n";
       my $rc = $SetSuspendState->Call($BOOLEAN_Hibernate, $BOOLEAN_ForceCritical, $BOOLEAN_DisableWakeEvent);
-      #print "'System Required' sent... ";
    }
    else
    {
-      print "ERROR: SetSuspendState did NOT load!!  ";
+      print "ERROR: suspendme: SetSuspendState did NOT load!!  \n";
    }
 }   

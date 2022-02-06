@@ -1,7 +1,7 @@
 @echo off
 rem Sleep prevention command
-
-set busycmd=perl "C:\Program Files\Utils\iambusy.pl"
+if "%UTLDIR%" == "" set UTLDIR=C:\Development\utils
+set busycmd=perl "%UTLDIR%\iambusy.pl"
 set interval=5
 set nosleepmins=60
 if NOT "%1"=="" set nosleepmins=%1
