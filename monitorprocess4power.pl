@@ -29,7 +29,8 @@ if($PLUTLDIR eq "")
 }
 
 # set external commands: maybe these can be called in a 'native' Perl way?
-my $busycmd = "\"$PLUTLDIR\\iambusy.pl\"";        # 'perl "%PLUTLDIR%\iambusy.pl"';
+# NB when perl isn't specfified the command runs but the arguments are not present (forking Perl!)
+my $busycmd = "perl \"$PLUTLDIR\\iambusy.pl\"";        # 'perl "%PLUTLDIR%\iambusy.pl"';
 my $sleepcmd= "\"$PLUTLDIR\\suspendme.pl\""; # 'perl "%PLUTLDIR%\suspendme.pl"';
 my $MP4P="NOTRUNNING";
 my $allowed=0;
@@ -245,7 +246,7 @@ do
       $allowed = 0;
    }
    $tasklist = qx ($busycmd -s 5);
-   $LOG->debug("Output from $busycmd: $tasklist");
+   $LOG->info("Output from $busycmd:\n$tasklist\n");
 }while($vdub < 2);
 
 
