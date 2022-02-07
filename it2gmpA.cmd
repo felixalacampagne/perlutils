@@ -1,12 +1,12 @@
 rem Uses multiprocess version to create 20GB of .mp3
-rem files from the default playlist on V: drive 
+rem files from the given playlist in the TMP directory 
 rem for later transfer to a USB drive, etc.
 
-set USBDRV=C:\temp
+set USBDRV=%TMP%
 
 set PLDIR=%~dp1
 if "%UTLDIR%" == "" set UTLDIR=C:\Development\utils
-set FFMPEG=%UTLDIR%\ffmpeg\ffmpeg
+set FFMPEG=%UTLDIR%\ffmpeg\bin\ffmpeg
 set USBDIR=%USBDRV%\Music
 mkdir "%USBDIR%" 2>nul
 
@@ -15,7 +15,7 @@ set log=%PLDIR%\it2gmpA_%ts%.log
 date /T >"%log%"
 
 rem debug cmd line
-perl "%UTLDIR%\it2gmpA.pl" -p %1 -m "%USBDIR%" -s 20GB -j 4 >"%log%" 2>&1
+perl "%UTLDIR%\it2gmpA.pl" -p %1 -m "%USBDIR%" -s 20GB -j 8 >"%log%" 2>&1
 
 goto :EOF
 
