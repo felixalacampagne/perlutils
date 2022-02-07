@@ -1,3 +1,9 @@
+# TODO: Missing timestamp at start of log messages
+# TODO: Output from iambusy is only shown when the command returns, so no idea
+#       when it is waiting until
+# TODO: Make iambusy and suspendme into some sort of API with paramenters equivalent to the command
+#       line arguments.
+
 # 07 Feb 2022 port of MonitorProcess4Power.cmd to perl in anticipation of dos command prompt
 #    removal which, it appears, is misinformation - command prompt is not being removed, only
 #    access via the context menu and right-click start menu. Nevertheless having 
