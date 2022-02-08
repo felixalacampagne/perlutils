@@ -19,16 +19,12 @@ Getopt::Long::Configure("pass_through", "bundling_override");
        
 
 
-my $msleep=-1;
-my $midle=0;
-my $mtotsleep=-1;
+my $title="No title";
 
 # Params in minutes
-GetOptions('sleep|s=i' => \$msleep,
-           'idle|i' => \$midle,
-           'total|t=i' => \$mtotsleep);
+GetOptions('title|t=s' => \$title);
 
-iambusy($msleep, $mtotsleep, $midle);
+settitle($title);
 
 exit 0;
 

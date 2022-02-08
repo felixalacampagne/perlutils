@@ -1,6 +1,8 @@
 package FALC::SCULog;
 use strict;
-use vars qw($VERSION);
+use warnings;
+#use vars qw($VERSION);
+our $VERSION;
 $VERSION = 1.0;
 {
 # 03 Nov 2014 Updated with stacktrace output for errors.
