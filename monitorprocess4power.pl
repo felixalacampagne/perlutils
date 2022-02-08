@@ -36,7 +36,7 @@ if($PLUTLDIR eq "")
 
 # set external commands: maybe these can be called in a 'native' Perl way?
 # NB when perl isn't specfified the command runs but the arguments are not present (forking Perl!)
-my $busycmd = "perl \"$PLUTLDIR\\iambusy.pl\"";        # 'perl "%PLUTLDIR%\iambusy.pl"';
+my $busycmd = "\"$PLUTLDIR\\iambusy.pl\"";        # 'perl "%PLUTLDIR%\iambusy.pl"';
 my $sleepcmd= "\"$PLUTLDIR\\suspendme.pl\""; # 'perl "%PLUTLDIR%\suspendme.pl"';
 my $MP4P="NOTRUNNING";
 my $allowed=0;
@@ -49,7 +49,7 @@ my $tasklist;
 # NB 10th token relies on the memory usage containing a comma!
 #for /F "tokens=10* delims=," %%i in ('tasklist /fi "WINDOWTITLE eq ProcessMonitor4Power" /NH /V /FO CSV') do set MP4P=%%i
 #if %MP4P%=="ProcessMonitor4Power" goto :END
-$LOG->debug( "LOG->info: Calling tasklist\n");
+$LOG->info( "Calling tasklist\n");
 
 $tasklist = qx (tasklist /fi "WINDOWTITLE eq ProcessMonitor4Power" /NH /V /FO CSV);
 $LOG->debug( "LOG->info: Output from tasklist:\n" . $tasklist);
@@ -240,8 +240,12 @@ do
          $tasklist = qx (tasklist /nh);
          $LOG->info("Running tasks:\n" . $tasklist);
          $LOG->info("Forcing sleep... nightynite");
-         $tasklist = qx ($sleepcmd);
-         $LOG->info("Output from $sleepcmd: $tasklist");
+         #$tasklist = qx ($sleepcmd);
+         system($sleepcmd);
+         if($? != 0)
+         {
+            $LOG->warn("Command failed: $sleepcmd");
+         }
          $LOG->info("\nFinished sleeping\n");
       }
    }
@@ -251,38 +255,14 @@ do
       $LOG->info("Power saving should be PREVENTED\n");
       $allowed = 0;
    }
-   $tasklist = qx ($busycmd -s 5);
-   $LOG->info("Output from $busycmd:\n$tasklist\n");
+   #$tasklist = qx ($busycmd -s 5);
+   system(($busycmd, "-s", "5"));
+   if($? != 0)
+   {
+      $LOG->warn("Command failed: $busycmd");
+   }   
 }while($vdub < 2);
 
-
-# :vdubisrunning
-# echo Long running process detected: %vdub%
-# :vidconisrunning
-# set allowed=0
-# echo %DATE% %TIME% Power saving should be PREVENTED
-# %busycmd% -s 5
-# goto MonitorLoop
-# 
-# rem goto Sleep
-# rem 
-# :Sleep
-# if %allowed% GEQ 4 (
-# set allowed=0
-# rem This to check for processes for which sleep should have been prevented
-# tasklist /nh
-# echo Forcing sleep... nightynite
-# %sleepcmd%
-# )
-# rem Sleep for 5 minutes
-# rem This seems to work with Windows 7
-# rem timeout /T 300 /NOBREAK >nul
-# %busycmd% -s 5 -idle
-# 
-# goto MonitorLoop
-# 
-# :END
-# 
 
 ###############################################################
 ###############################################################
@@ -306,7 +286,7 @@ package SCULog;
 {
 # 03 Nov 2014 Updated with stacktrace output for errors.
 use Devel::StackTrace;
-
+use Date::Calc qw(Today_and_Now Delta_DHMS);
 # This seems to work OK in the class. To use the constans to set the level
 # the syntax is like '$log->level(SCULog->LOG_DEBUG);'
 use constant { LOG_SILENT => -1, LOG_ALWAYS => 10, LOG_FATAL => 20, LOG_ERROR => 30, LOG_WARN=>40 ,LOG_INFO => 50, LOG_DEBUG => 60, LOG_TRACE => 70};
@@ -337,6 +317,7 @@ sub new
    $self->level(LOG_INFO);
    $self->logfile(-1);
    $self->{"_LOG_LABELS"} = \%LOG_LABELS;
+   $self->logtime(-1);
    return $self;
 }
 
@@ -348,7 +329,7 @@ my $fmt = shift;
 my $msg = "";
 my $level;
 my $logfh = $self->logfile;
-
+my $ts = "";
    no warnings "numeric";
 
    # Does this work? Can I just use Level()? How do I know if the first parameter is
@@ -360,6 +341,12 @@ my $logfh = $self->logfile;
    if(int($keyword) <= $level)
    {
       my $output;
+      
+      if($self->islogtime)
+      {
+         $ts = $self->timestamp . " ";
+      }
+      
       $msg = sprintf($fmt, @_);
       if(($keyword == LOG_ERROR) || ($keyword == LOG_FATAL))
       {
@@ -377,11 +364,11 @@ my $logfh = $self->logfile;
          # Get the function doing the calling at line X
          $frame = $trace->next_frame;
          my $callerfunc = $frame->subroutine;
-         $output = sprintf("%-8s: %s(%04d): %s",($LOG_LABELS{$keyword}//$keyword), $callerfunc, $callerline, $msg);
+         $output = sprintf("%s%-8s: %s(%04d): %s", $ts, ($LOG_LABELS{$keyword}//$keyword), $callerfunc, $callerline, $msg);
       }
       else
       {
-         $output = sprintf("%-8s: %s",($labels{$keyword}//$keyword), $msg);
+         $output = sprintf("%s%-8s: %s", $ts,($labels{$keyword}//$keyword), $msg);
       }
       $!=1;
       print $output;
@@ -391,6 +378,27 @@ my $logfh = $self->logfile;
       }
    }
    return $msg;
+}
+
+
+sub timestamp
+{
+my $self = shift;
+my @starttime;
+
+if(@_ > 0)
+{
+   @starttime = @_;
+}
+else
+{
+   @starttime = Today_and_Now();
+}
+
+#my $nowstr = sprintf("%04d.%02d.%02d %02d:%02d:%02d", $starttime[0],$starttime[1],$starttime[2],$starttime[3],$starttime[4],$starttime[5]);
+my $nowstr = sprintf("%02d.%02d %02d:%02d:%02d",$starttime[1],$starttime[2],$starttime[3],$starttime[4],$starttime[5]);
+
+return $nowstr;
 }
 
 sub islevel
@@ -411,6 +419,25 @@ my $self = shift;
       $self->{level} = shift;
    }
    return $self->{level};
+}
+
+sub logtime
+{
+my $self = shift;
+
+   if(@_)
+   {
+      $self->{logtime} = shift;
+   }
+   return $self->{logtime};
+}
+
+sub islogtime
+{
+my $self = shift;
+my $curlevel = $self->logtime;
+
+   return (-1 == $curlevel);
 }
 
 sub logfile
