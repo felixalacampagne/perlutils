@@ -1,8 +1,10 @@
 #!/usr/bin/perl
+# 09 Feb 2022 Uses shared logging module. Can configure Windows registry with current script location
 # 26 Apr 2019 Update the console title with name of directory being processed. Handy when the
 #             output is directed to a log file, eg. when run from context menu.
 #             Moved rest of history to the end of the file
 
+# TODO Use the SCUWin module for the wakeywakey, TITLE
 use 5.010;  # Available since 2007, so should be safe to use this!!
 use strict;
 use warnings;
@@ -111,8 +113,11 @@ if( @ARGV > 0)
 
 do
 { # Now Perl is saying Use of uninitialized value $startdir in numeric gt (>) at C:\Development\utils\perlutils\foldermd5.pl line 113.
-  # which is complete bollocks! There is no >
-   if($startdir eq "")   # ie. nothing specified on command line
+  # which is complete bollocks! It really means there is a problem in the while clause, line 268!!!!,
+  # where $startdir is set to the next ARGV and the length is checked. Of course when the last
+  # ARGV is processed it couldn't return something nice and simple as an empty string... oh no, it's
+  # got to set it to something which can't be tested for - 'uninitialized value'. Forking Perl!
+   if($startdir eq "")   # ie. nothing specified on command line 
    {
    	$startdir = File::Spec->curdir();
    	$startdir = File::Spec->rel2abs(File::Spec->curdir());
@@ -216,13 +221,13 @@ do
       {
          $LOG->info("Processing Disk: %s directory: %s\n", $vollbl, $startdir);
       }
-      $LOG->info("${tab}Started at:                 %s\n", ymdhmsString(@starttime));
+      $LOG->info("Started at:                 %s\n", ymdhmsString(@starttime));
       processDir($startdir);
    }
    elsif( isFileForMD5($startdir) )
    {
       $LOG->info("MD5 update: %s\n", $startdir);
-      $LOG->info("${tab}Started at:                 %s\n", ymdhmsString(@starttime));
+      $LOG->info("Started at:                 %s\n", ymdhmsString(@starttime));
       updateFileMD5($startdir);
    }
    else
@@ -234,12 +239,12 @@ do
    @endtime = Today_and_Now();
    my @elapsed = Delta_DHMS(@starttime, @endtime); # ($days,$hours,$minutes,$seconds)
    settitle("Done!");
-   $LOG->info("${tab}Finished at:                %s\n", ymdhmsString(@endtime));
-   $LOG->info("${tab}Elapsed:                    %02d:%02d:%02d\n", $elapsed[1],$elapsed[2],$elapsed[3]);
-   $LOG->info("${tab}Total directories:          " . getTotdirs() . "\n");
-   $LOG->info("${tab}Directories requiring MD5s: " . getTotmd5dirs() . "\n");
-   $LOG->info("${tab}Folder MD5s calculated:     " . getTotcalcmd5() . "\n");
-   $LOG->info("${tab}Folder MD5s checked:        " . getTotchkmd5() . "\n");
+   $LOG->info("Finished at:                %s\n", ymdhmsString(@endtime));
+   $LOG->info("Elapsed:                    %02d:%02d:%02d\n", $elapsed[1],$elapsed[2],$elapsed[3]);
+   $LOG->info("Total directories:          " . getTotdirs() . "\n");
+   $LOG->info("Directories requiring MD5s: " . getTotmd5dirs() . "\n");
+   $LOG->info("Folder MD5s calculated:     " . getTotcalcmd5() . "\n");
+   $LOG->info("Folder MD5s checked:        " . getTotchkmd5() . "\n");
    
    my $fnptr = sub{$LOG->info(@_)};
    if(getTotfailmd5dir() > 0)
@@ -247,8 +252,8 @@ do
       # If a dir failed then there must be some files which failed
       $fnptr = sub{$LOG->warn(@_)};
    }
-   &$fnptr("${tab}Failed folder MD5s:         " . getTotfailmd5dir() . "\n");
-   &$fnptr("${tab}Failed file MD5s:           " . getTotfailmd5file() . "\n");
+   &$fnptr("Failed folder MD5s:         " . getTotfailmd5dir() . "\n");
+   &$fnptr("Failed file MD5s:           " . getTotfailmd5file() . "\n");
    
    # If $logfh is initialized to a known value the open command complains
    # so 'defined' seems to be the way to check whether the variable was
@@ -258,11 +263,14 @@ do
       close($logfh);
    }
    select STDOUT;
-   
+   $startdir = "";
    shift(@ARGV); #Removes first element
-   $startdir = $ARGV[0];   
+   if( @ARGV > 0)
+   {
+      $startdir = $ARGV[0];
+   }
 
-}while(length $startdir > 0);
+}while($startdir ne "");
 
 # Enable power saving here so machine can go to sleep
 # while waiting for input.
