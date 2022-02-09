@@ -4,7 +4,9 @@ rem 07-Jul-2018 The quotes and delayed expansion are for the "Florence & The Mac
 rem be required if TITLE was set from Perl). 
 
 if "%UTLDIR%" == "" set UTLDIR=C:\Development\utils
+if "%PLUTLDIR%" == "" set PLUTLDIR=%UTLDIR%\perlutils
+
 if not %UTLLOGDIR%x==x set TEMP=%UTLLOGDIR%
 
 TITLE fMD5:
-perl "%UTLDIR%\foldermd5.pl" %*
+perl "%PLUTLDIR%\foldermd5.pl" %*

@@ -5,6 +5,10 @@
 
 use 5.010;  # Available since 2007, so should be safe to use this!!
 use strict;
+use warnings;
+use FindBin;           # This should find the location of this script
+use lib $FindBin::Bin . '/lib'; # This indicates to look for modules in the script location
+
 use IO::Handle;
 use Data::Dumper;
 use Digest::MD5;
@@ -19,9 +23,12 @@ use Term::ReadKey;
 use Win32::API;
 use Win32::DriveInfo;  # Not installed by default: ppm install Win32-DriveInfo
 use Win32::Console; 
-my $CONSOLE=Win32::Console->new;
+use Win32::TieRegistry ( Delimiter=>"/" );
 
-my $LOG = SCULog->new();
+use FALC::SCULog;
+my $LOG = FALC::SCULog->new();
+
+my $CONSOLE=Win32::Console->new;
 
 # Must be positioned at the start of the script before the get/inc funcs are used otherwise
 # the hash is not initialised even though there is no syntax error for the
@@ -44,38 +51,44 @@ my $logfilename;
 my %opts;
 my @starttime = Today_and_Now();
 my @endtime;
-getopts('ckvlpr?', \%opts);
+getopts('ckvlprw?', \%opts);
 
-if( $opts{"?"} == 1 )
+if( defined $opts{"?"} )
 {
    HELP_MESSAGE();
 }
 
-if( $opts{"c"} == 1)
+if( defined $opts{"c"})
 {
    SkipCalc(1);
 }
 
-if( $opts{"k"} == 1)
+if( defined $opts{"k"})
 {
    SkipCheck(1);
 }
-if( $opts{"v"} == 1)
+if( defined $opts{"v"})
 {
-   $LOG->level(SCULog->LOG_DEBUG);
+   $LOG->level(FALC::SCULog->LOG_DEBUG);
 }
 
-if( $opts{"l"} == 1)
+if( defined $opts{"l"})
 {
    LogToFile(1);
 }
-if( $opts{"p"} == 1)
+if( defined $opts{"p"})
 {
    PauseOnExit(1);
 }
-if( $opts{"r"} == 1)
+if( defined $opts{"r"})
 {
    ForceRecalc(1);
+}
+
+if( defined $opts{"w"})
+{
+   install();
+   exit 0;
 }
 
 
@@ -96,10 +109,9 @@ if( @ARGV > 0)
 #print "Pauseonexit: " . $pauseonexit . "\n";
 #die(0);
 
-
-
 do
-{
+{ # Now Perl is saying Use of uninitialized value $startdir in numeric gt (>) at C:\Development\utils\perlutils\foldermd5.pl line 113.
+  # which is complete bollocks! There is no >
    if($startdir eq "")   # ie. nothing specified on command line
    {
    	$startdir = File::Spec->curdir();
@@ -361,7 +373,7 @@ return $nowstr;
 }
 
 
-sub HELP_MESSAGE()
+sub HELP_MESSAGE
 {
    print "foldermd5 [-l] [-v] [-c] [-k] [-p] [initial scan directory]...\n";
    print "   -l Log to file. Log file is created in the\n";
@@ -817,154 +829,173 @@ state $pauseonexit = 0;
    return $pauseonexit;
 }
 
-
-package SCULog;
+# Installs the application into the Windows registry so it appears in the right-click context menus
+# The current locaiton of the script is used for the registry entries. The current location should
+# contain the 'lib' folder with the user defined Perl modules.
+# Execution of this function will require Administrator privileges.
+sub install
 {
-# 03 Nov 2014 Updated with stacktrace output for errors.
-use Devel::StackTrace;
-
-# This seems to work OK in the class. To use the constans to set the level
-# the syntax is like '$log->level(SCULog->LOG_DEBUG);'
-use constant { LOG_SILENT => -1, LOG_ALWAYS => 10, LOG_FATAL => 20, LOG_ERROR => 30, LOG_WARN=>40 ,LOG_INFO => 50, LOG_DEBUG => 60, LOG_TRACE => 70};
-
-# This does appear to be shared between the instances of the class 
-# but initializing it at the class level does not work. It is the same for simple 
-# scalar values initialized here. The init must be done in the constructor (ie. new())
-# but it only needs to be done once.
-my %LOG_LABELS;
-
+my $shellkey;
+#my $appkey;
+#my $cmdkey;
+#my $cmd;
+my $apppath = $FindBin::Bin . "\\foldermd5.cmd";
+my $appkeyname;
+#my $result;
+my $delim;
+my $cmdval;
+my $cmdxval;
+my $cmdrval;
    
-sub new
-{
-   # Init the class variables, this only has to be done once
-   # but it doesn't work when done at the class level.
-   if(!%LOG_LABELS)
-   {
-      # print "Initialising LOG_LABELS: " . %LOG_LABELS . "\n";
-      %LOG_LABELS = ( LOG_ALWAYS, "ALWAYS", LOG_FATAL, "FATAL", LOG_ERROR, "ERROR", LOG_WARN, "WARNING", LOG_INFO, "INFO", LOG_DEBUG, "DEBUG", LOG_TRACE, "TRACE");   
-   }
-   # print "LOG_LABELS initialised to: " . %LOG_LABELS . "\n";
-   # The class is supplied as the first parameter
-   # Not sure what it is used for!!!
-   my $class = shift;
-   my $self = {};  # this becomes the "object", in this case an empty anonymous hash
-   bless $self;    # this associates the "object" with the class
+   $delim = $Registry->Delimiter("/");
 
-   $self->level(LOG_INFO);
-   $self->{"_LOG_LABELS"} = \%LOG_LABELS;
-   return $self;   
+   # Should be possible to run the perl command without going via a cmd script
+   $cmdval  = "cmd /c \"%\"" . $apppath . "%\" -l -p %\"%1%\"\"";
+   $cmdxval = "cmd /c \"%\"" . $apppath . "%\" -r -l -p %\"%1%\"\"";
+   
+# [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5\command]
+# @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
+   $shellkey = delimitkey("Classes","Directory");
+   $appkeyname = "FolderMD5";
+   addShellCommand($shellkey, $appkeyname, $cmdval, 0);  # $rootkeyname, $appname, $cmd, $ext
+
+# [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5 Recalculate] "Extended"=""
+# [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5 Recalculate\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -r -l -p %\"%1%\"\""
+   $appkeyname = "FolderMD5 Recalculate";
+   addShellCommand($shellkey, $appkeyname, $cmdxval, 1);  # $rootkeyname, $appname, $cmd, $ext
+   
+
+# [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5\command]
+# @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %1\""
+   $shellkey = delimitkey("Classes", "Drive");
+   $appkeyname = "FolderMD5";
+   addShellCommand($shellkey, $appkeyname, $cmdval, 0);  # $rootkeyname, $appname, $cmd, $ext
+
+# 
+# [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5 Recalculate]  "Extended"=""
+# [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5 Recalculate\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -r -l -p %1\""
+   $appkeyname = "FolderMD5 Recalculate";
+   addShellCommand($shellkey, $appkeyname, $cmdxval, 1);  # $rootkeyname, $appname, $cmd, $ext
+
+
+# [HKEY_CLASSES_ROOT\DVD\shell\FolderMD5\command]
+# @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -c -l -p %\"%1%\"\""
+
+   $cmdrval  = "cmd /c \"%\"" . $apppath . "%\"-c -l -p %\"%1%\"\"";
+   $shellkey = delimitkey("Classes", "DVD");
+   $appkeyname = "FolderMD5";
+   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
+
+# [HKEY_CLASSES_ROOT\WMP11.AssocFile.M4A\shell\FolderMD5 Update\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
+   $shellkey = delimitkey("Classes", "WMP11.AssocFile.M4A");
+   $appkeyname = "FolderMD5 Update";
+   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
+
+ 
+# [HKEY_CLASSES_ROOT\iTunes.m4v\shell\FolderMD5 Update\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
+   $shellkey = delimitkey("Classes", "iTunes.m4v");
+   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
+
+ 
+# [HKEY_CLASSES_ROOT\WMP11.AssocFile.MP3\shell\FolderMD5 Update\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
+   $shellkey = delimitkey("Classes", "WMP11.AssocFile.MP3");
+   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
+
+ 
+# [HKEY_CLASSES_ROOT\WMP.FlacFile\shell\FolderMD5 Update\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
+   $shellkey = delimitkey("Classes", "WMP11.FlacFile");
+   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
+
+
+# [HKEY_CLASSES_ROOT\WMP11.AssocFile.MP4\shell\FolderMD5 Update\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
+   $shellkey = delimitkey("Classes", "WMP11.AssocFile.MP4");
+   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
 }
 
-sub logmsg
+sub addShellCommand # $rootkeyname, $appname, $cmd, $ext
 {
-my $self = shift;
-my $keyword = shift;
-my $fmt = shift;
-my $msg = "";
-my $level;
-   no warnings "numeric";
-   
-   # Does this work? Can I just use Level()? How do I know if the first parameter is
-   # "self" or a level value??
-   $level = $self->level;
-   
-   my %labels = %{$self->{"_LOG_LABELS"}};
+my( $rootkeyname, $appname, $cmd, $ext )= @_;
+my $delim = $Registry->Delimiter();
+my $rootkey = $Registry->Open($rootkeyname); # eg. "Classes/Directory/");
+my $result;
 
-   if(int($keyword) <= $level)
+   if(!defined($rootkey))
    {
-      $msg = sprintf($fmt, @_);
-      if(($keyword == LOG_ERROR) || ($keyword == LOG_FATAL))
+      $LOG->info("addShellCommand: key '$rootkeyname' does not exist\n");
+      return 1;
+   } 
+
+   # should jsut return it if it already exists
+   my $shellkey = $rootkey->CreateKey("shell"); 
+   if(!defined($shellkey))
+   {
+      $LOG->info("addShellCommand: key 'shell/' is not available\n");
+      die 0;
+   } 
+ 
+   my $appkey = $shellkey->Open($appname . $delim);
+   if(defined($appkey))
+   {
+      $LOG->info($appkey->Path ." key already exists: deleting\n");
+      deleteReg($shellkey, $appname . $delim);
+   }
+
+   $appkey = $shellkey->CreateKey($appname);
+   if(! defined($appkey))
+   {
+      $LOG->info("Failed to create key: $appname \n");
+      die(1);
+   }
+   my $cmdkey = $appkey->CreateKey("command");
+   if(! defined($cmdkey))
+   {
+      $LOG->info("Failed to create key: $appname/command \n");
+
+      die(1);
+   }
+   
+   if($ext > 0)
+   {
+      $result = $appkey->SetValue("Extended", "");
+   }
+   $result = $cmdkey->SetValue("", $cmd);   
+   return $result;
+}
+
+# Found this as a solution to 'delete not working for occupied keys' (see https://www.perlmonks.org/?node_id=360580)
+# Version in the post didn't work but this does appear to work now (fingers crossed it doesn't go rogue and delete
+# the entire registry!!
+sub deleteReg {
+    my( $key, $name )= @_;
+    my $delim = $key->Delimiter;
+    
+   # name must end with delim for delete key to work
+   if(substr($name, -1) ne $delim)
+   {
+      $name = $name . $delim;
+   }    
+    
+   for(  eval { keys %{$key->{$name}} }  ) 
+   {
+      my $sub = $_;
+      $LOG->info("deleteReg: sub=$sub\n");
+      if($sub ne $delim)  # Last item appears to be just a single delim
       {
-         # NB. The frame subroutine value refers to the subroutine being called (an SCULog method normally) at line X in package Y.
-         # Therefore need frame(X-1)->subroutine to know who is doing the calling.
-         my $trace = Devel::StackTrace->new(ignore_class => 'SCULog');
-         my $frame;
-         
-         # Get the package and line info
-         $frame = $trace->next_frame;
-         my $calledfunc = $frame->subroutine;  # Method being called at line X
-         my $callerline = $frame->line;
-         my $callerpackage=$frame->package;
-
-         # Get the function doing the calling at line X
-         $frame = $trace->next_frame;
-         my $callerfunc = $frame->subroutine;
-         print sprintf("%-8s: %s(%04d): %s",($LOG_LABELS{$keyword}//$keyword), $callerfunc, $callerline, $msg);
-      }
-      else
-      {
-         $|=1;
-         
-         print sprintf("%-8s: %s",($labels{$keyword}//$keyword), $msg);
+         deleteReg( $key, "$name$sub" );
       }
    }
-   return $msg;
+    $LOG->info("deleteReg: key=" . $key->Path . " name=$name\n");
+    delete $key->{$name};
 }
 
-sub islevel
+sub delimitkey
 {
-my $self = shift;
-my $testlevel = shift;
-my $curlevel = $self->level;
+#my($arrayRef) = @_;
+my $delim = $Registry->Delimiter();
 
-   return (int($testlevel) <= $curlevel);
+   return join($delim, @_, '');
 }
 
-sub level
-{
-my $self = shift;
-
-   if(@_)
-   {
-      $self->{level} = shift;
-   }
-   return $self->{level};
-}
-
-sub always
-{
-my $self = shift;
-   $self->logmsg(LOG_ALWAYS, @_);   
-}
-
-sub fatal
-{
-my $self = shift;
-   $self->logmsg(LOG_FATAL, @_);   
-}
-
-sub error
-{
-my $self = shift;
-   $self->logmsg(LOG_ERROR, @_);
-}
-
-sub warn
-{
-my $self = shift;
-   $self->logmsg(LOG_WARN, @_);
-}
-
-sub info
-{
-my $self = shift;
-   $self->logmsg(LOG_INFO, @_);
-}
-
-sub debug
-{
-my $self = shift;
-   $self->logmsg(LOG_DEBUG, @_);
-}
-
-sub trace
-{
-my $self = shift;
-   $self->logmsg(LOG_TRACE, @_);
-}
-
-
-} # End package SCULog
 
 # 30 Jul 2018 Quick hack to get volume name into the log
 # 21 Jul 2018 Uses Disk volume name (label) in temporary log filename when log cannot be opened 
