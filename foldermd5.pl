@@ -864,9 +864,9 @@ my $cmdrval;
    #$cmdval  = "cmd /c \"%\"" . $apppath . "%\" -l -p %\"%1%\"\"";
    #$cmdxval = "cmd /c \"%\"" . $apppath . "%\" -r -l -p %\"%1%\"\"";
    #$cmdrval = "cmd /c \"%\"" . $apppath . "%\"-c -l -p %\"%1%\"\"";
-   $cmdval  = $plpath . "\"" . $apppath .    "\" -l -p \"%1\"";
-   $cmdxval = $plpath . "\"" . $apppath . "\" -r -l -p \"%1\"";
-   $cmdrval = $plpath . "\"" . $apppath . "\" -c -l -p \"%1\"";
+   $cmdval  = $plpath . " \"" . $apppath .    "\" -l -p \"%1\"";
+   $cmdxval = $plpath . " \"" . $apppath . "\" -r -l -p \"%1\"";
+   $cmdrval = $plpath . " \"" . $apppath . "\" -c -l -p \"%1\"";
 # [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5\command]
 # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
    $shellkey = delimitkey("Classes","Directory");
@@ -943,7 +943,7 @@ my $result;
    my $shellkey = $rootkey->CreateKey("shell"); 
    if(!defined($shellkey))
    {
-      $LOG->info("addShellCommand: key 'shell/' is not available\n");
+      $LOG->info("addShellCommand: " . $rootkey->Path . " key 'shell/' is not available\n");
       die 0;
    } 
  
