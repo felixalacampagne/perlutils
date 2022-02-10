@@ -32,31 +32,26 @@ my $LOG = FALC::SCULog->new();
 
    # For HD H264 recordings (VU+) for SmartCut editing
 my @H264regexes;
-   push(@H264regexes, "NPO3 HD - Homeland");
-   push(@H264regexes, "NPO3 HD - Mr_ Robot");
+#   push(@H264regexes, "NPO3 HD - ");
    
-   push(@H264regexes, "VIER HD - Lucifer");
-   push(@H264regexes, "Q2 HD - ");
+   # push(@H264regexes, "Play4 - ");
+   push(@H264regexes, "VTM 2 HD - ");
    push(@H264regexes, "BBC .* HD - Doctor Who");
-   push(@H264regexes, "BBC One HD - The Missing");
-   push(@H264regexes, "BBC Two HD - The Fall");
-   push(@H264regexes, "BBC Four HD - The Code");
+   push(@H264regexes, "BBC One HD - Kick-Ass");
+   # push(@H264regexes, "BBC Two HD - ");
+   # push(@H264regexes, "BBC Four HD - ");
    push(@H264regexes, "ITV HD - ");
-   push(@H264regexes, "Channel 4 HD - ");
+   # push(@H264regexes, "Channel 4 HD - ");
    
    
    # Non-HD H264 channels (VU+) for SmartCut editing
-   push(@H264regexes, "VIJF - Chesapeake Shores");
-   push(@H264regexes, "VIJF - The Rookie");
-   push(@H264regexes, "VIJF - Grey\\'s Anatomy");
-   push(@H264regexes, "CAZ - ");
-   #push(@H264regexes, "ZES - The Blacklist");
-   push(@H264regexes, "ZES - ");
+   push(@H264regexes, "Play5 - ");
+   push(@H264regexes, "VTM 3 - ");
+   push(@H264regexes, "Play6 - ");
 
    # SD, ie. MPEG, recordings (VU+) for Cuttermaran editing
 my @MP2regexes;
-   push(@MP2regexes, "ITV.* - The Jonathan Ross Show");
-   push(@MP2regexes, "Channel 4 - Homeland");
+   push(@MP2regexes, "ITV(?: *\\+ *1)? - The Bay");
    push(@MP2regexes, "Channel 5 - ");
    push(@MP2regexes, "5STAR(?: *\\+1)? - ");
    push(@MP2regexes, "Channel 4(?: *\\+ *1)? - ");
