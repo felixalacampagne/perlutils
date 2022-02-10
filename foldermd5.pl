@@ -25,7 +25,7 @@ use Term::ReadKey;
 use Win32::API;
 use Win32::DriveInfo;  # Not installed by default: ppm install Win32-DriveInfo
 use Win32::Console; 
-use Win32::TieRegistry ( Delimiter=>"/" );
+
 
 use FALC::SCULog;
 my $LOG = FALC::SCULog->new();
@@ -841,13 +841,16 @@ state $pauseonexit = 0;
 # The current locaiton of the script is used for the registry entries. The current location should
 # contain the 'lib' folder with the user defined Perl modules.
 # Execution of this function will require Administrator privileges.
+use Config;
+use Win32::TieRegistry ( Delimiter=>"/" );
 sub install
 {
 my $shellkey;
 #my $appkey;
 #my $cmdkey;
 #my $cmd;
-my $apppath = $FindBin::Bin . "\\foldermd5.cmd";
+my $plpath = $Config{perlpath}; # Context menu ignores PATH so must use fullpath to Perl
+my $apppath = $FindBin::Bin .  "\\foldermd5.pl"; #"\\foldermd5.cmd";
 my $appkeyname;
 #my $result;
 my $delim;
@@ -858,9 +861,12 @@ my $cmdrval;
    $delim = $Registry->Delimiter("/");
 
    # Should be possible to run the perl command without going via a cmd script
-   $cmdval  = "cmd /c \"%\"" . $apppath . "%\" -l -p %\"%1%\"\"";
-   $cmdxval = "cmd /c \"%\"" . $apppath . "%\" -r -l -p %\"%1%\"\"";
-   
+   #$cmdval  = "cmd /c \"%\"" . $apppath . "%\" -l -p %\"%1%\"\"";
+   #$cmdxval = "cmd /c \"%\"" . $apppath . "%\" -r -l -p %\"%1%\"\"";
+   #$cmdrval = "cmd /c \"%\"" . $apppath . "%\"-c -l -p %\"%1%\"\"";
+   $cmdval  = $plpath . "\"" . $apppath .    "\" -l -p \"%1\"";
+   $cmdxval = $plpath . "\"" . $apppath . "\" -r -l -p \"%1\"";
+   $cmdrval = $plpath . "\"" . $apppath . "\" -c -l -p \"%1\"";
 # [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5\command]
 # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
    $shellkey = delimitkey("Classes","Directory");
@@ -889,7 +895,7 @@ my $cmdrval;
 # [HKEY_CLASSES_ROOT\DVD\shell\FolderMD5\command]
 # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -c -l -p %\"%1%\"\""
 
-   $cmdrval  = "cmd /c \"%\"" . $apppath . "%\"-c -l -p %\"%1%\"\"";
+   
    $shellkey = delimitkey("Classes", "DVD");
    $appkeyname = "FolderMD5";
    addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
@@ -986,13 +992,13 @@ sub deleteReg {
    for(  eval { keys %{$key->{$name}} }  ) 
    {
       my $sub = $_;
-      $LOG->info("deleteReg: sub=$sub\n");
+      $LOG->trace("deleteReg: sub=$sub\n");
       if($sub ne $delim)  # Last item appears to be just a single delim
       {
          deleteReg( $key, "$name$sub" );
       }
    }
-    $LOG->info("deleteReg: key=" . $key->Path . " name=$name\n");
+    $LOG->debug("deleteReg: key=" . $key->Path . " name=$name\n");
     delete $key->{$name};
 }
 
