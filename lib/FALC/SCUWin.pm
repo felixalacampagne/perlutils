@@ -32,6 +32,9 @@ use Win32::API;
 use Win32::EventLog;
 use Win32::Console;
 use Time::Seconds;
+use FALC::SCULog;
+
+my $LOG = FALC::SCULog->new();
 
 # suspendme( delayMins )
 #
@@ -48,7 +51,7 @@ my $startsecs = time();
    if($sleep > 0)
    {
       $ts = time2date($startsecs + $sleep);
-      print "suspendme: System will be suspended at $ts";
+      $LOG->info("suspendme: System will be suspended at $ts\n");
    }
 
    my $elapsed=0;
@@ -66,13 +69,13 @@ my $startsecs = time();
    $ts = time2date(time());
    # This only gets printed AFTER the resume from sleep
    # BUT might be useful in case the sleep is not working...
-   print "suspendme: Done at $ts\n";
+   $LOG->info("suspendme: Done at $ts\n");
 }
 
 # sleepInMins     - delay before issuing busy signal (-1 : no delay)
-# idleOnly        - 0: issue busy signals, 1: delaay only , no busy signals
 # totalBusyInMins - totla time to keep system busy (-1: return after issuing busy signal) 
-sub iambusy # ( sleepInMins, idleOnly, totalBusyInMins )
+# idleOnly        - 0: issue busy signals, 1: delay only , no busy signals
+sub iambusy # ( sleepInMins, totalBusyInMins, idleOnly )
 {
 my ($sleep, $totsleep, $idle)  = @_;
 my $ts;
@@ -95,12 +98,12 @@ my $startsecs = time();
       }
    
       $ts = time2date($startsecs + $totsleep);
-      print "Preventing computer sleep until $ts";
+      $LOG->info("iambusy: Preventing computer sleep until $ts\n");
    }
    elsif($sleep > 0)
    {
       $ts = time2date($startsecs + $sleep);
-      print "iambusy: Sleeping until $ts";
+      $LOG->info( "iambusy: Sleeping until $ts\n");
    }
    
    my $elapsed=0;
@@ -123,12 +126,12 @@ my $startsecs = time();
       if($elapsed<$totsleep)
       {
          $remain = secs2dhms($totsleep - $elapsed);
-         print "\niambusy: Remaining busy time: " . $remain;
+         $LOG->info("iambusy: Remaining busy time: " . $remain);
       }
    }until($elapsed>$totsleep);
    
    $ts = time2date(time());
-   print "\niambusy: Done at $ts\n";
+   $LOG->info("iambusy: Done at $ts\n");
 }
 
 sub settitle
@@ -236,12 +239,12 @@ my $ts;
       # Give the event handler time to perform its actions
       sleep 10;
       $ts = time2date(time());
-      print "suspendme: Sending system to sleep at $ts\n";
+      $LOG->info( "niteynitey: Sending system to sleep at $ts\n");
       my $rc = $SetSuspendState->Call($BOOLEAN_Hibernate, $BOOLEAN_ForceCritical, $BOOLEAN_DisableWakeEvent);
    }
    else
    {
-      print "ERROR: suspendme: SetSuspendState did NOT load!!  \n";
+      $LOG->error("niteynitey: SetSuspendState did NOT load!!  \n");
    }
 }   
 
@@ -273,3 +276,4 @@ sub wakeywakey
       print "ERROR: SetThreadExecutionState did NOT load!!  ";
    }
 }   
+;1 # needed to avoid 'FALC/SCUWin.pm did not return a true value'

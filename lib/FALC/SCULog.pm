@@ -18,28 +18,33 @@ use constant { LOG_SILENT => -1, LOG_ALWAYS => 10, LOG_FATAL => 20, LOG_ERROR =>
 # but it only needs to be done once.
 my %LOG_LABELS;
 my $logfh = -1;
-
+my $sculogSingleton;
 sub new
 {
    # Init the class variables, this only has to be done once
    # but it doesn't work when done at the class level.
-   if(!%LOG_LABELS)
+   if( ! defined $sculogSingleton )
    {
-      # print "Initialising LOG_LABELS: " . %LOG_LABELS . "\n";
-      %LOG_LABELS = ( LOG_ALWAYS, "ALWAYS", LOG_FATAL, "FATAL", LOG_ERROR, "ERROR", LOG_WARN, "WARNING", LOG_INFO, "INFO", LOG_DEBUG, "DEBUG", LOG_TRACE, "TRACE");
+      if(!%LOG_LABELS)
+      {
+         # print "Initialising LOG_LABELS: " . %LOG_LABELS . "\n";
+         %LOG_LABELS = ( LOG_ALWAYS, "ALWAYS", LOG_FATAL, "FATAL", LOG_ERROR, "ERROR", LOG_WARN, "WARNING", LOG_INFO, "INFO", LOG_DEBUG, "DEBUG", LOG_TRACE, "TRACE");
+      }
+      # print "LOG_LABELS initialised to: " . %LOG_LABELS . "\n";
+      # The class is supplied as the first parameter
+      # Not sure what it is used for!!!
+      my $class = shift;
+      my $self = {};  # this becomes the "object", in this case an empty anonymous hash
+      bless $self;    # this associates the "object" with the class
+   
+      $self->level(LOG_INFO);
+      $self->logfile(-1);
+      $self->{"_LOG_LABELS"} = \%LOG_LABELS;
+      $self->logtime(-1);
+      
+      $sculogSingleton = $self;
    }
-   # print "LOG_LABELS initialised to: " . %LOG_LABELS . "\n";
-   # The class is supplied as the first parameter
-   # Not sure what it is used for!!!
-   my $class = shift;
-   my $self = {};  # this becomes the "object", in this case an empty anonymous hash
-   bless $self;    # this associates the "object" with the class
-
-   $self->level(LOG_INFO);
-   $self->logfile(-1);
-   $self->{"_LOG_LABELS"} = \%LOG_LABELS;
-   $self->logtime(-1);
-   return $self;
+   return $sculogSingleton;
 }
 
 sub logmsg
@@ -217,3 +222,5 @@ my $self = shift;
 
 
 } # End package SCULog
+
+;1 # needed to avoid 'FALC/SCULog.pm did not return a true value'
