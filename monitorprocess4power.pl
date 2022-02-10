@@ -181,7 +181,7 @@ do
          $LOG->info("Forcing sleep... nightynite\n");
 
          suspendme(-1);
-         $LOG->info("\nFinished sleeping\n");
+         $LOG->info("Finished sleeping\n");
       }
    }
    else
