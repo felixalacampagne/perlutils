@@ -177,7 +177,7 @@ my $dh;
 my @files;
 my $fullfile;
 
-   opendir $dh, $dir or die "Couldn't open dir '$srcdir': $!";
+   opendir $dh, $dir or die "Couldn't open dir '$dir': $!";
    @files = grep { !/^\.\.?$/ } readdir $dh;
    closedir $dh;
 
@@ -254,6 +254,7 @@ my $fullregex;
    #   - Move matching files (using DOS command?) to dest.
 
    @tsfiles = getTSFiles($origdir);
+   $LOG->info("Count .TS files found in '$origdir': " . @tsfiles . "\n");
    foreach my $tsfullfile (@tsfiles)
    {
       ($tsfilename,$dirs,$suffix) = fileparse( $tsfullfile );
