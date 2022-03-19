@@ -1,3 +1,7 @@
+# 19 Mar 2022 uses file locking to prevent multiple instances since I came
+#    across two instance running recently-it does take a while to retrieve the 
+#    initial tasklist so I guess the two within 4 or 5 seconds of each together. File
+#    locking, which appears to work for Windows, is much faster
 # 07 Feb 2022 port of MonitorProcess4Power.cmd to perl in anticipation of dos command prompt
 #    removal which, it appears, is misinformation - command prompt is not being removed, only
 #    access via the context menu and right-click start menu. Nevertheless having 
@@ -11,52 +15,41 @@ use lib $FindBin::Bin . "/lib"; # This indicates to look for modules in the lib 
 use FALC::SCULog;
 use FALC::SCUWin;
 use Date::Calc qw(Today_and_Now Delta_DHMS);
+use Fcntl qw !LOCK_EX LOCK_NB!;   # file lock to prevent multiple instances
+#use File::HomeDir;
 
 my $LOG = FALC::SCULog->new();
+ 
+$LOG->info( "Checking for alreaady running MonitorProcess4Power\n");
+#flock DATA, LOCK_EX|LOCK_NB or die "Another instance is already running-exiting\n";
+# Lock on the __DATA_ section (at the end of the file) seems to prevent Perl
+# from even running the script. Consequently the log message and the 'die' message
+# do not even appear if another instance is already running.
+# Can fix this by using a separate lock file but where to put the lock file since it 
+# needs to be common to all the 'users' which may run this script. 
+# Most likely place is in the Public user directory but how to find the Public directory location??
+# File::HomeDir->users_desktop('Public'); sounds promising but is not implemented!!!
+# Could use my_home and go up and down to Public with a relative path but that just
+# sucks since the public folder could get moved elsewhere.
+# Will rely on the PUBLIC env.var instead....
 
-# These are no longer required with the use of Perl modules
-# but they might be needed in the future, somewhere. They should
-# probably go into their own module :-)
-# Set env.var. defaults
-#if "%UTLDIR%" == "" set UTLDIR=C:\Development\utils
-#if "%CMDUTLDIR%" == "" set CMDUTLDIR=%UTLDIR%\cmdutils
-#if "%JSUTLDIR%" == "" set JSUTLDIR=%UTLDIR%\jsutils
-#if "%PLUTLDIR%" == "" set PLUTLDIR=%UTLDIR%\perlutils
-
-#my $UTLDIR = $ENV{UTLDIR};
-#if($UTLDIR eq "")
-#{
-#   $UTLDIR="C:\\Development\\utils";
-#}
-#my $PLUTLDIR = $ENV{PLUTLDIR};
-#if($PLUTLDIR eq "")
-#{
-#   $PLUTLDIR = $UTLDIR . "\\perlutils";
-#}
+my $docs    = $ENV{'PUBLIC'};
+$docs = $docs . "\\Documents\\";
+$LOG->debug( "Public directory is: $docs\n");
+open my $file, ">", $docs . "ProcessMonitor4Power.lock" or die $!; 
+if ( ! flock($file, LOCK_EX|LOCK_NB) )
+{
+   $LOG->info( "Another instance is already running: exiting\n");
+   exit(0);
+}
+$LOG->info( "Looks like it's just us!\n");
+settitle("ProcessMonitor4Power");
 
 my $MP4P="NOTRUNNING";
 my $allowed=0;
 
 my $runtask="";
 my $tasklist;
-
-
-# Is MonitorProcess4Power already running
-# NB 10th token relies on the memory usage containing a comma!
-#for /F "tokens=10* delims=," %%i in ('tasklist /fi "WINDOWTITLE eq ProcessMonitor4Power" /NH /V /FO CSV') do set MP4P=%%i
-#if %MP4P%=="ProcessMonitor4Power" goto :END
-$LOG->info( "Checking for alreaady running MonitorProcess4Power\n");
-
-$tasklist = qx (tasklist /fi "WINDOWTITLE eq ProcessMonitor4Power" /NH /V /FO CSV);
-$LOG->debug( "LOG->info: Output from tasklist:\n" . $tasklist);
-
-if( ($runtask) = ($tasklist =~ m/(ProcessMonitor4Power)/))
-{
-   $LOG->info( "$runtask already running: exiting\n");
-   exit;
-}
-
-settitle("ProcessMonitor4Power");
 
 my $vdub=0; # "NOTRUNNING";
 
@@ -203,7 +196,7 @@ do
 ####                    #######################################
 ###############################################################
 ###############################################################
-
+__DATA__
 
 
 

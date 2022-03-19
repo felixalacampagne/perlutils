@@ -37,7 +37,8 @@ my @H264regexes;
    # push(@H264regexes, "Play4 - ");
    push(@H264regexes, "VTM 2 HD - ");
    push(@H264regexes, "BBC .* HD - Doctor Who");
-   push(@H264regexes, "BBC One HD - Kick-Ass");
+   push(@H264regexes, "BBC .* HD - Killing Eve");
+
    # push(@H264regexes, "BBC Two HD - ");
    # push(@H264regexes, "BBC Four HD - ");
    push(@H264regexes, "ITV HD - ");
