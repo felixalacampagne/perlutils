@@ -1,3 +1,4 @@
+# 24 Apr 2020 fixe iambusy parameter order
 # 19 Mar 2022 uses file locking to prevent multiple instances since I came
 #    across two instance running recently-it does take a while to retrieve the 
 #    initial tasklist so I guess the two within 4 or 5 seconds of each together. File
@@ -184,7 +185,7 @@ do
       $allowed = 0;
    }
 
-   iambusy(5, 0, -1);
+   iambusy(5, -1, 0);
    
 }while($vdub < 2);
 

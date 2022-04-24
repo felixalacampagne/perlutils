@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+# 24-04-2022 extra iambusy debug logging
 # 08-02-2022 iambusy and suspendme code moved into a Perl module for easier access from other Perl scripts.
 # 30-04-2018 Raises a custom Windows event shortly before forcing sleep. This allows a
 #            Task with elevated privileges to be executed by triggering on the event. The primary
@@ -113,22 +114,24 @@ my $startsecs = time();
    {
       if($idle == 0)
       {
+         $LOG->debug("iambusy: busy signal\n");
          wakeywakey();
       }
    
       if($sleep > 0)
       {
+         $LOG->debug("iambusy:sleep for $sleep\n");
          sleep $sleep;
       }
    
       $elapsed = (time() - $startsecs);
-      
-      if($elapsed<$totsleep)
+      $remain = secs2dhms($totsleep - $elapsed);
+      $LOG->info("iambusy: Remaining busy time: " . $remain);
+      if($elapsed >= $totsleep)
       {
-         $remain = secs2dhms($totsleep - $elapsed);
-         $LOG->info("iambusy: Remaining busy time: " . $remain);
+         $LOG->debug("iambusy: target time exceeded, no more waiting to do");   
       }
-   }until($elapsed>$totsleep);
+   }until($elapsed >= $totsleep);
    
    $ts = time2date(time());
    $LOG->info("iambusy: Done at $ts\n");
