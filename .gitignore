@@ -4,3 +4,5 @@
 *.crx
 *.bak
 *.lnk
+lib/**
+lib/!FALC!

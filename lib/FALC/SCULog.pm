@@ -1,4 +1,5 @@
 package FALC::SCULog;
+# (c) felixalacampagne 2022
 use strict;
 use warnings;
 #use vars qw($VERSION);
