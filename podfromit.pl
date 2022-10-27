@@ -26,7 +26,7 @@
 # 27-Jun-2015 First working version integrated with podtag. Renames sources file to .done
 # 21-Jun-2015 First version. Finds the Podcasts and renames them. Result can be used with
 #
-use lib 'cpaperllib'; # Remove this when the MP3 library is added to the default installation.
+use lib 'lib'; # Remove this when the MP3 library is added to the default installation.
 use strict;
 use warnings;
 use utf8;
@@ -52,7 +52,11 @@ use File::Spec;
 use URI::Escape;
 use URI::file;
 use Encode qw(decode encode);
-use MP3::Tag;
+
+# WARNING: THe standard version of the library does not support the PCST (or RVAD) tag. A custom
+# version of the library with ID3v2.pm.diff changes applied is required to support PCST and
+# for this script to work correctly
+use MP3::Tag;   # ppm install MP3::Tag (or cpan MP3::Tag for most recent version)
 
 my $LOG = SCULog->new();
 $LOG->level(SCULog->LOG_INFO);

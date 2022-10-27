@@ -45,7 +45,11 @@ use warnings;
 use strict;
 use Getopt::Std;
 #use File::Find::Rule;
-use MP3::Tag;
+
+# WARNING: THe standard version of the library does not support the PCST (or RVAD) tag. A custom
+# version of the library with ID3v2.pm.diff changes applied is required to support PCST and
+# for this script to work correctly
+use MP3::Tag;   # ppm install MP3::Tag (or cpan MP3::Tag for most recent version)
 use utf8;
  
 # APESTRIP imports 
