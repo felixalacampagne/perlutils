@@ -23,7 +23,7 @@ use Encode;
 use Getopt::Std;
 use Term::ReadKey;
 use Win32::API;
-use Win32::DriveInfo;  # Not installed by default: ppm install Win32-DriveInfo
+use Win32::DriveInfo;  # Not installed by default: cpanm Win32::DriveInfo
 use Win32::Console; 
 
 
