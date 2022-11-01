@@ -4,8 +4,9 @@ Windows Registry Editor Version 5.00
 [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5]
 @=""
 
+[-HKEY_CLASSES_ROOT\Directory\shell\FolderMD5\command]
 [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5\command]
-@="cmd /c \"%\"E:\\Development\\utils\\perlutils\\foldermd5.pl%\" -l -p %\"%1%\"\""
+@="\"E:\\Development\\Perl64\\perl\\bin\\perl.exe\" \"E:\\Development\\utils\\perlutils\\foldermd5.pl\" -l -p \"%1\""
 
 [-HKEY_CLASSES_ROOT\Directory\shell\FolderMD5 Recalculate]
 [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5 Recalculate]
@@ -13,45 +14,45 @@ Windows Registry Editor Version 5.00
 "Extended"=""
 
 [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5 Recalculate\command]
-@="cmd /c \"%\"E:\\Development\\utils\\perlutils\\foldermd5.pl%\" -r -l -p %\"%1%\"\""
+@="\"E:\\Development\\Perl64\\perl\\bin\\perl.exe\" \"E:\Development\utils\perlutils\foldermd5.pl\" -r -l -p \"%1\""
 
 [-HKEY_CLASSES_ROOT\Drive\shell\FolderMD5]
 [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5]
 @=""
 
 [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5\command]
-@="cmd /c \"%\"E:\\Development\\utils\\perlutils\\foldermd5.pl%\" -l -p %1\""
+@="\"E:\\Development\\Perl64\\perl\\bin\\perl.exe\" \"E:\Development\utils\perlutils\foldermd5.pl\" -l -p \"%1\""
 
 [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5 Recalculate]
 @=""
 "Extended"=""
 
 [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5 Recalculate\command]
-@="cmd /c \"%\"E:\\Development\\utils\\perlutils\\foldermd5.pl%\" -r -l -p %1\""
+@="\"E:\\Development\\Perl64\\perl\\bin\\perl.exe\" \"E:\Development\utils\perlutils\foldermd5.pl\" -r -l -p \"%1\""
 
 [-HKEY_CLASSES_ROOT\DVD\shell\FolderMD5]
 [HKEY_CLASSES_ROOT\DVD\shell\FolderMD5]
 @=""
 
 [HKEY_CLASSES_ROOT\DVD\shell\FolderMD5\command]
-@="cmd /c \"%\"E:\\Development\\utils\\perlutils\\foldermd5.pl%\" -c -l -p %\"%1%\"\""
+@="\"E:\\Development\\Perl64\\perl\\bin\\perl.exe\" \"E:\Development\utils\perlutils\foldermd5.pl\" -c -l -p \"%1\""
 
 [-HKEY_CLASSES_ROOT\DVD\shell\FolderMD5]
 [HKEY_CLASSES_ROOT\WMP11.AssocFile.M4A\shell\FolderMD5 Update\command]
-@="cmd /c \"%\"E:\\Development\\utils\\perlutils\\foldermd5.pl%\" -l -p %\"%1%\"\""
+@="\"E:\\Development\\Perl64\\perl\\bin\\perl.exe\" \"E:\Development\utils\perlutils\foldermd5.pl\" -l -p \"%1\""
 
 [-HKEY_CLASSES_ROOT\iTunes.m4v\shell\FolderMD5 Update\command]
 [HKEY_CLASSES_ROOT\iTunes.m4v\shell\FolderMD5 Update\command]
-@="cmd /c \"%\"E:\\Development\\utils\\perlutils\\foldermd5.pl%\" -l -p %\"%1%\"\""
+@="\"E:\\Development\\Perl64\\perl\\bin\\perl.exe\" \"E:\Development\utils\perlutils\foldermd5.pl\" -l -p \"%1\""
 
 [-HKEY_CLASSES_ROOT\WMP11.AssocFile.MP3\shell\FolderMD5 Update\command]
 [HKEY_CLASSES_ROOT\WMP11.AssocFile.MP3\shell\FolderMD5 Update\command]
-@="cmd /c \"%\"E:\\Development\\utils\\perlutils\\foldermd5.pl%\" -l -p %\"%1%\"\""
+@="\"E:\\Development\\Perl64\\perl\\bin\\perl.exe\" \"E:\Development\utils\perlutils\foldermd5.pl\" -l -p \"%1\""
 
 [-HKEY_CLASSES_ROOT\WMP.FlacFile\shell\FolderMD5 Update\command]
 [HKEY_CLASSES_ROOT\WMP.FlacFile\shell\FolderMD5 Update\command]
-@="cmd /c \"%\"E:\\Development\\utils\\perlutils\\foldermd5.pl%\" -l -p %\"%1%\"\""
+@="\"E:\\Development\\Perl64\\perl\\bin\\perl.exe\" \"E:\Development\utils\perlutils\foldermd5.pl\" -l -p \"%1\""
 
 [-HKEY_CLASSES_ROOT\WMP11.AssocFile.MP4\shell\FolderMD5 Update\command]
 [HKEY_CLASSES_ROOT\WMP11.AssocFile.MP4\shell\FolderMD5 Update\command]
-@="cmd /c \"%\"E:\\Development\\utils\\perlutils\\foldermd5.pl%\" -l -p %\"%1%\"\""
+@="\"E:\\Development\\Perl64\\perl\\bin\\perl.exe\" \"E:\Development\utils\perlutils\foldermd5.pl\" -l -p \"%1\""
