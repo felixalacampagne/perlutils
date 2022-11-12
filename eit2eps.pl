@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+# 12-Nov-2022 Uses NFO file from 'repository' if it exists
 # 12-Nov-2021 added 'aired' based on date in filename or current date. Added MD5
 #             of nof content as unique id in hope Kodi will better recognise when programes have been deleted.
 # 03-Oct-2020 creates the NFO for none EIT files using same defaults as for folder.eps
@@ -26,6 +27,8 @@ use Digest::MD5;
 # the command should contain placeholders for the program name (#PROGNAME#) and the program directory (#PROGDIR#)
 my $gARTCMDTMPL=$ENV{ARTCMD} . "";
 
+# TODO This should become a command lien arg, possibly with a default value
+my $NFOREPOPATH="\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
 
 # script is intended for use with filename which have the date/channel info removed
 # this is to allow the EPS line to be accumulated into a .eps file with the name
@@ -48,15 +51,18 @@ if( $opts{"?"} )
 
 if( $opts{"d"})
 {
+   # This is where the program sub-directories are made
    $epsdir = $opts{"d"};
 }
+
 if( $opts{"n"})
 {
+   # This is where the NFO is written to
    $nfodir = $opts{"n"};
 }
 
 
-printf "Episode file directory: %s\n", $epsdir;
+printf "Root programme directory directory: %s\n", $epsdir;
 
 if( $opts{"l"})
 {
@@ -67,17 +73,20 @@ if( $opts{"l"})
 # before the video file is moved to there.
 if($nfodir eq "" )
 {
+   # This is WRONG! NFO should be written to the programme sub-directory by default
    $nfodir = $epsdir;
 }
 printf "NFO file directory: %s\n", $nfodir;
 $eitfile = $ARGV[0];
 
-# Default artwork file will be copied into a newly created program directory so avoid
+# Default artwork file will be copied into a newly created program directory to avoid
 # the appleTV displaying a random scene from one of the episodes. This is more annoying
 # now that all programs get their own directory.
-# The default file is the folder.jpg file in the directory where the nfos are created, ie.
-# the staging directory, unless a file is given on the command line.
-$gDefArtwork = File::Spec->catdir($nfodir, "folder.jpg");
+# The default file is the folder.jpg file in the directory where the programm sub-dirs are created 
+# unless a file is given on the command line.
+# This is obsolete now that a folder.jpg is generated for each programme sub-directory by the external
+# command.
+$gDefArtwork = File::Spec->catdir($epsdir, "folder.jpg");
 if( $opts{"a"} )
 {
    $gDefArtwork = $opts{"a"};
@@ -142,6 +151,14 @@ if($ep ne "")
 {
    $episode = $ep;
 }
+
+# There is now a 'repository' of NFO files which should be used when there is no EIT
+# or even in place of the EIT. Use of a repository NFO is the default for createFileNFO.
+# For consistency the EPS files should be updated from the content of the final NFO file
+# ... something for a rainey day!!
+printf "Creating NFO for: %s\n", $eitfilename;
+my $nfofilename = createFileNFO($nfodir, $progname, $eitfilename, $season, $id, $episode, $progdesc);
+
 my $eprec;
 $eprec = "<episode>" .
            "<id>" . $id . "</id>" .
@@ -153,9 +170,6 @@ $eprec = "<episode>" .
 
 updateeps($epsdir, $season, $id, $progname, $filename, $eprec);
 
-# createFileNFO works for any type of filename
-printf "Creating NFO for: %s\n", $eitfilename;
-createFileNFO($nfodir, $progname, $eitfilename, $season, $id, $episode, $progdesc);
 
 
 #######################################################
@@ -451,6 +465,21 @@ my $uid = "9876";
    # Replace file extension with .nfo
    $nfoname =~ s/\.[^\.]*$/.nfo/g;
    $nfopath = File::Spec->catdir($nfopath, $nfoname);
+   if( -s $nfopath )
+   {
+      print "NFO file $nfopath already exists and will not be overwritten";
+      return $nfopath;
+   }
+   
+   # Check whether NFO file is present in the new NFO repository
+my $nforepopath = File::Spec->catdir($NFOREPOPATH, $nfoname);   
+   if( -s $nforepopath )
+   {
+      print "NFO file $nfoname is present in the NFO repository: Copying to $nfopath\n";
+      copy($nforepopath, $nfopath);
+      return $nfopath;
+   }
+      
    print "createFileNFO: creating nfo file: " . $nfopath . " for " . $vidfilename . "\n";
    my $nfocont = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n";
    $nfocont .= "<episodedetails>\n";
@@ -485,6 +514,7 @@ my $uid = "9876";
    }
    $nfocont .= "</episodedetails>\n";
    saveutf8xfile($nfopath, $nfocont);
+   return $nfopath;
 }
 
 
@@ -533,6 +563,7 @@ sub getprogrammepath
    my $lcprogname = lc $progname; 
    return File::Spec->catdir($epsdir, $lcprogname); 
 }
+
 # Searches for an .eps file in the following:
 #   <epsdir>\<progname>\folder.eps
 #   <epsdir>\drama\folder.eps show=progname
@@ -555,8 +586,6 @@ my @epslines;
     print "Creating new show directory: $path\n";
     make_path($path);
     
-    # Kludge to get default artwork into the new directory
-    # Idiot Perl has no copy file to directory command
     initArtwork($path, $progname);
 
     # Bit ugly doing it here but it avoids parsing the returned path to get the directory...
