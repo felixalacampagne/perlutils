@@ -4,3 +4,11 @@
 *.crx
 *.bak
 *.lnk
+lib/*
+!lib/FALC
+
+!lib/MP3/
+lib/MP3/*
+!lib/MP3/Tag/
+lib/MP3/Tag/*
+!lib/MP3/Tag/*.diff
