@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+# 14-Nov-2022 Add NFO functionality
 # 12-Nov-2022 Uses NFO file from 'repository' if it exists
 # 12-Nov-2021 added 'aired' based on date in filename or current date. Added MD5
 #             of nof content as unique id in hope Kodi will better recognise when programes have been deleted.
@@ -22,6 +23,7 @@ use File::Basename;
 use File::Path qw(make_path remove_tree);
 use File::Copy;
 use Digest::MD5;
+use XML::Simple;
 
 # Kludge to provide a command to create the folder artwork for a new program
 # the command should contain placeholders for the program name (#PROGNAME#) and the program directory (#PROGDIR#)
@@ -142,7 +144,18 @@ if($ext eq ".eit")
 } # end if for eit file
 else
 {
-   $progdesc =    $progname . ": ". $ep . "(" . $season . "x" . $id . ")";
+   $progdesc = getDescFromNFORepo($eitfilename, $NFOREPOPATH);
+   if($progdesc eq "")
+   {
+      # Should try to find desc from folder.eps
+      $progdesc = getDescFromEPS($epsdir, $progname, $season, $id);
+      
+      if($progdesc eq "")
+      {
+         # Can't get a description from anywhere else so make a default entry
+         $progdesc =    $progname . ": ". $ep . "(" . $season . "x" . $id . ")";
+      }
+   }
 }
 
 
@@ -189,7 +202,7 @@ if($ep ne "")
 # <episode><id>04</id><filename>The Sinner 22-10-09 4x04 Episode 04</filename><name>Episode 04</name><description>When the Muldoons push to close the investigation, Ambrose refuses, pushing Sonya to the brink.</description></episode>
 # </season>
 
-
+# NB To use the EPS file as XML the season blocks need to be embedded in a higher level block - episodes
 my $eprec;
 $eprec = "<episode>" .
            "<id>" . $id . "</id>" .
@@ -198,7 +211,7 @@ $eprec = "<episode>" .
            "<description>" . $progdesc . "</description>" .
         "</episode>";
 
-
+# NB: This initialises the show directory if it doesn't exist, ie. create dir, artwork, tvshow.nfo and folder.eps
 updateeps($epsdir, $season, $id, $progname, $filename, $eprec);
 
 
@@ -349,7 +362,7 @@ sub updateeps
   # for now: create/update the epsdir/progname.eps
   my @epslines;
   
-  my $path = findepsfile($epsdir, $progname);
+  my $path = findepsfile($epsdir, $progname, 1);
   print "Updating EPS file: $path\n";
   my $fheps;
 
@@ -364,13 +377,13 @@ sub updateeps
   # The episode start and end tags appear on the same line, implies the filename block is in the same
   # line as the episode block
 
-
+  # TODO Convert this to use an XML parser
   # state:  0 looking for season id
   #         1 looking for show (season end tag resets to 0, loop continues)
   #         2 looking for filename (season end tag, insert eprec before season end tag, exit loop save file
   #        10 epsrec updated, needs to be saved
   #        99 entry already present just exit
-  my $state=0;
+   my $state=0;
   my $param;
   my $i;
   my $alen = scalar(@epslines);
@@ -431,7 +444,31 @@ sub updateeps
     $seas .= "<show>$progname</show>\n";
     $seas .= $eprec . "\n";
     $seas .= "</season>\n";
-    push (@epslines, $seas);
+    
+
+    my $len = $#epslines;
+    if($len == 0)
+    {
+      push(@epslines, "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n");
+      push(@epslines, "<episodes>\n");
+      push (@epslines, $seas);
+      push(@epslines, "</episodes>\n");
+    }
+    else
+    {
+      # Need to insert the new season between the episodes tags, if present
+      my $inspos=$len+1;
+      for(my $i = 0; $i <= $#epslines; $i++)
+      {
+         if($epslines[$i] eq "</episodes>")
+         {
+             $inspos = $i;
+             last;
+         }
+      } 
+      splice @epslines, $inspos, 0, $seas;    
+    }
+    
     $state = 10;
   }
 
@@ -466,6 +503,70 @@ $str =~ s/\</&lt;/g;
 $str =~ s/\"/&quot;/g;
 $str =~ s/\'/&apos;/g;
 return $str;
+}
+
+
+sub getDescFromNFORepo
+{
+   my ($vidfilename, $nforepodir) = @_;
+   my $nfodesc = "";
+   my $nfoname = $eitfilename;
+   # Replace file extension with .nfo
+   $nfoname =~ s/\.[^\.]*$/.nfo/g;
+   my $nforepopath = File::Spec->catdir($nforepodir, $nfoname);   
+   if( -s $nforepopath )
+   {
+      print "NFO file $nfoname is present in the NFO repository: Reading desc from repo NFO\n";
+      my $xmldoc = $xmlParser->XMLin($nforepopath);
+
+      # Need to remove leading and trailing spaces, LFs, CRs
+      $nfodesc = $xmldoc->{plot};
+      $nfodesc =~ s/^\s+|\s+$//g ;
+   }
+   return $nfodesc;
+}
+
+# WARNING: folder.eps must be modified to contain the season blocks in a parent block.
+# Doesn't appear to matter what the parent block is called, 'seasons' would be most logical
+# This is using XML::Simple which is very hard to understand/use. It would be better to use XML::libXML
+# however this is not available at all sites and requires many dependencies to be made available and compiled.
+sub getDescFromEPS
+{
+   my ($epsdir, $progname, $srcseas, $srceps) = @_;
+   my $epsdesc = "";
+   my $epsfile = findepsfile($epsdir, $progname, 0);
+   if($epsfile ne "")
+   {
+      # Try using XML parser to extract the value
+      my $xmldoc = $xmlParser->XMLin($epsfile, forcearray=>1);
+
+      my $seasonref = $xmldoc->{season};
+
+      foreach my $season (@$seasonref)
+      {
+         print "Season: $season->{id}[0]\n";
+         
+         if($season->{id}[0] eq $srcseas)
+         {
+            print $season->{episode};
+            my $episoderef = $season->{episode};
+            for my $episode (@$episoderef)
+            {
+               print "Episode: $episode->{id}[0]: $episode->{description}[0]\n";
+               if($episode->{id}[0] eq $srceps)
+               {
+                  $desc = $episode->{description}[0];
+                  last;
+               }
+            }
+            last;
+         }
+      }
+      print "Description: $epsdesc\n";
+      # remove leading and trailing spaces, LFs, CRs
+      $epsdesc =~ s/^\s+|\s+$//g ;      
+   }
+   return $epsdesc
 }
 
 sub createFileNFO
@@ -607,7 +708,7 @@ sub getprogrammepath
 # NB. The returned filename may not exist
 sub findepsfile
 {
-my ($epsdir, $progname) = @_;
+my ($epsdir, $progname, $initshow) = @_;
 my $path;
 my @epslines;
 
@@ -615,18 +716,20 @@ my @epslines;
   # TODO: filter lcprogname for undesirable characters
   $path = getprogrammepath($epsdir, $progname);  
   print "Searching for $progname EPS in: $path\n";
-  
-  unless(-d $path)
+  if($initshow != 0)
   {
-    print "Creating new show directory: $path\n";
-    make_path($path);
-    
-    initArtwork($path, $progname);
+     # Bit ugly doing it here but...
+     # Now even uglier doing it here I need to read the file ONLY if it already exists!
+     unless(-d $path)
+     {
+       print "Creating new show directory: $path\n";
+       make_path($path);
+       
+       initArtwork($path, $progname);
 
-    # Bit ugly doing it here but it avoids parsing the returned path to get the directory...
-    createFolderNFO($progname, $path);
+       createFolderNFO($progname, $path);
+     }
   }
-  
   if( -d $path)
   {
     print "Found directory for $progname: $path\n";
