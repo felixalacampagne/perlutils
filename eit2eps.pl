@@ -41,8 +41,9 @@ my $gDefArtwork="";
 my $epsdir = ".";
 my $nfodir = "";
 my $logfilename;
+my $nforepopath = $NFOREPOPATH;
 my %opts;
-getopts('a:d:n:l?', \%opts);
+getopts('a:d:n:r:l?', \%opts);
 
 
 
@@ -61,6 +62,12 @@ if( $opts{"n"})
 {
    # This is where the NFO is written to
    $nfodir = $opts{"n"};
+}
+
+if( $opts{"r"})
+{
+   # This is where the NFO is written to
+   $nforepopath = $opts{"r"};
 }
 
 
@@ -144,7 +151,7 @@ if($ext eq ".eit")
 } # end if for eit file
 else
 {
-   $progdesc = getDescFromNFORepo($eitfilename, $NFOREPOPATH);
+   $progdesc = getDescFromNFORepo($eitfilename, $nforepopath);
    if($progdesc eq "")
    {
       # Should try to find desc from folder.eps
@@ -400,7 +407,7 @@ sub updateeps
     }
     elsif($state == 1)
     {
-      if( $line =~ m/<show>$progname<\/show>/ )
+      if( $line =~ m/<show>$progname<\/show>/i )
       {
         print "Found a matching season show.\n";
         $state = 2;
@@ -416,8 +423,18 @@ sub updateeps
       if( $line =~ m/<filename>$filename<\/filename>/ )
       {
         # entry is already present
-        print "Filename is already presentin folder.eps: $line.\n";
+        my $trimln = $line;
+        $trimln =~ s/^\s+|\s+$//g ;        
+        print "Filename is already present in folder.eps: [$trimln]\n";
         $state = 99;
+
+        # TODO: Only replace if desc has changed...
+        if($trimln ne $eprec)
+        {
+          print "Replacing existing value with: [$eprec]\n";
+          splice @epslines, $i, 1, $eprec . "\n";
+          $state = 10;
+        }
         last;
       }
       elsif( $line =~ m/<\/season>/ )
@@ -447,7 +464,8 @@ sub updateeps
     
 
     my $len = $#epslines;
-    if($len == 0)
+    print "Length of current folder.eps: $len\n";
+    if($len < 1)
     {
       push(@epslines, "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n");
       push(@epslines, "<episodes>\n");
@@ -516,6 +534,7 @@ sub getDescFromNFORepo
    my $nforepopath = File::Spec->catdir($nforepodir, $nfoname);   
    if( -s $nforepopath )
    {
+      my $xmlParser = new XML::Simple;
       print "NFO file $nfoname is present in the NFO repository: Reading desc from repo NFO\n";
       my $xmldoc = $xmlParser->XMLin($nforepopath);
 
@@ -535,8 +554,9 @@ sub getDescFromEPS
    my ($epsdir, $progname, $srcseas, $srceps) = @_;
    my $epsdesc = "";
    my $epsfile = findepsfile($epsdir, $progname, 0);
-   if($epsfile ne "")
+   if(-s $epsfile)
    {
+      my $xmlParser = new XML::Simple;
       # Try using XML parser to extract the value
       my $xmldoc = $xmlParser->XMLin($epsfile, forcearray=>1);
 
@@ -555,7 +575,7 @@ sub getDescFromEPS
                print "Episode: $episode->{id}[0]: $episode->{description}[0]\n";
                if($episode->{id}[0] eq $srceps)
                {
-                  $desc = $episode->{description}[0];
+                  $epsdesc = $episode->{description}[0];
                   last;
                }
             }
