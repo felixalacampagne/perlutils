@@ -477,8 +477,33 @@ $str =~ s/\'/&apos;/g;
 return $str;
 }
 
-
 sub getDescFromNFORepo
+{
+   my ($vidfilename, $nforepodir) = @_;
+   my $nfodesc = "";
+   my $nfoname = $eitfilename;
+   # Replace file extension with .nfo
+   $nfoname =~ s/\.[^\.]*$/.nfo/g;
+   my $nforepopath = File::Spec->catdir($nforepodir, $nfoname);   
+   if( -s $nforepopath )
+   {
+      print "NFO file $nfoname is present in the NFO repository: Reading desc from repo NFO\n";
+      my $xp = XML::XPath->new(filename => $nforepopath);
+      my $xpcrit = "//episodedetails/plot/text()";
+      my $descnodes =  $xp->find($xpcrit);
+      my $i = $descnodes->size();      
+      if($i > 0)
+      {
+         $nfodesc = $descnodes->get_node(0)->getValue();
+         $nfodesc =~ s/^\s+|\s+$//g ;
+         print "Description from $nforepopath: $nfodesc\n";
+      }
+   }
+   return $nfodesc;
+}
+
+
+sub getDescFromNFORepo_Simple
 {
    my ($vidfilename, $nforepodir) = @_;
    my $nfodesc = "";
@@ -515,20 +540,28 @@ sub getDescFromEPS
       my $xp = XML::XPath->new(filename => $epsfile);
       my $xpcrit = "//season[show = '$progname' and id='$srcseas']/episode[id='$srceps']/description/text()";
       my $descnodes =  $xp->find($xpcrit);
-      my $i = $descnodes->size();
-      if($i > 0)
-      {
-         my $n;
-         for($n=0; $n<$i; $n++)
+      
+      foreach my $node ($descnodes->get_nodelist) {
+         my $desc = $node->getValue();
+         if(length($desc) > length($epsdesc))
          {
-            $epsdesc = $descnodes->get_node($n)->getValue();;
-            if($epsdesc ne "")
-            {
-               print "Found description for $progname ${srcseas}x$srceps: $epsdesc\n";
-               last;
-            }  
-         }
+            $epsdesc = $desc;
+         }          
       }
+      print "Description from $epsfile: $epsdesc\n";
+#      my $i = $descnodes->size();
+#      if($i > 0)
+#      {
+#         my $n;
+#         for($n=0; $n<$i; $n++)
+#         {
+#            my $desc = $descnodes->get_node($n)->getValue();
+#            if(length($desc) > length($epsdesc))
+#            {
+#              $epsdesc = $desc;
+#            }  
+#         }
+#      }
    }
    return $epsdesc;
 }
