@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+# 17-Nov-2022 convert updateeps to use XML parser
 # 14-Nov-2022 Add NFO functionality
 # 12-Nov-2022 Uses NFO file from 'repository' if it exists
 # 12-Nov-2021 added 'aired' based on date in filename or current date. Added MD5
@@ -24,6 +25,8 @@ use File::Path qw(make_path remove_tree);
 use File::Copy;
 use Digest::MD5;
 use XML::Simple;
+use XML::Twig;        # seems to automatically include XML:XPath
+use XML::Twig::XPath; 
 
 # Kludge to provide a command to create the folder artwork for a new program
 # the command should contain placeholders for the program name (#PROGNAME#) and the program directory (#PROGDIR#)
@@ -183,44 +186,18 @@ if($ep ne "")
 #          If there is an EIT desc then use it for the NFO AND update folder.eps
 #          If there is NO EIT desc and folder.eps already contain a match then use the desc from folder.eps for the NFO
 #          If there is NO EIT and NO folder.eps then use default values for folder.eps and NFO
-# example NFO for getting the desc from
-# <?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
-# <episodedetails>
-# <title>Episode 04</title>
-# <showtitle>The Sinner</showtitle>
-# <season>4</season>
-# <episode>04</episode>
-# <plot>
-# The Sinner: Episode 04(4x04)
-# </plot>
-# <uniqueid type="mytvshows" default="true">36ff68056c1e85b37281f09d526bbc12</uniqueid>
-# <aired>2022-10-09</aired>
-# </episodedetails>
-# Example folder.eps
-# <season>
-# <id>4</id>
-# <show>The Sinner</show>
-# <episode><id>01</id><filename>The Sinner 22-09-18 4x01 Episode 01</filename><name>Episode 01</name><description>Tijdens een tripje met Sonya naar Hanover Island, Maine, krijgt Ambrose last van slapeloosheid. Tijdens een nachtelijke wandeling is hij er getuige van hoe een jonge vrouw van een klif springt. Regisseur: Derek Simonds. Acteurs: Bill Pullman (Harry Ambrose), Frances Fisher (Meg Muldoon), Alice Kremelberg (Percy Muldoon), Neal Huff (Sean Muldoon), Cindy Cheung (Stephanie Lam) (2021) S04 E01. Tijdens een tripje met Sonya naar Hanover Island, Maine, krijgt Ambrose last van slapeloosheid. Tijdens een nachtelijke wandeling is hij er getuige van hoe een jonge vrouw van een klif springt.</description></episode>
-# <episode><id>02</id><filename>The Sinner 22-09-25 4x02 Episode 02</filename><name>Episode 02</name><description>Golden Globe-genomineerde anthologieserie met Bill Pullman in de rol van detective Harry Ambrose, die zich verdiept in verbijsterende misdaden gepleegd door ogenschijnlijk doodnormale mensen. Regisseur: Adam Bernstein. Acteurs: Bill Pullman (Harry Ambrose), Frances Fisher (Meg Muldoon), Alice Kremelberg (Percy Muldoon), Neal Huff (Sean Muldoon), Cindy Cheung (Stephanie Lam) (2021) S04 E02. Golden Globe-genomineerde anthologieserie met Bill Pullman in de rol van detective Harry Ambrose, die zich verdiept in verbijsterende misdaden gepleegd door ogenschijnlijk doodnormale mensen.</description></episode>
-# <episode><id>03</id><filename>The Sinner 22-10-02 4x03 Episode 03</filename><name>Episode 03</name><description>Het gevonden lichaam blijkt wel degelijk dat van Percy te zijn. En hoewel de lijkschouwer besluit dat er geen sporen van geweld op het lichaam te vinden zijn, weigert Ambrose om het onderzoek af te ronden. Mike Lam vertelt hem vervolgens dat hij Percy vaak in het gezelschap van Colin zag, maar die ontkent dat. Regisseur: Radium Cheung. Acteurs: Bill Pullman (Harry Ambrose), Frances Fisher (Meg Muldoon), Alice Kremelberg (Percy Muldoon), Neal Huff (Sean Muldoon), Cindy Cheung (Stephanie Lam) (2021) S04 E04. Golden Globe-genomineerde anthologieserie met Bill Pullman in de rol van detective Harry Ambrose, die zich verdiept in verbijsterende misdaden gepleegd door ogenschijnlijk doodnormale mensen.</description></episode>
-# <episode><id>05</id><filename>The Sinner 22-10-16 4x05 Episode 05</filename><name>Episode 05</name><description>Ambrose achterhaalt het adres van Em Castillo en besluit haar een bezoekje te brengen. Wanneer ze niet thuis blijkt te zijn, breekt hij in en vindt er een notitieboekje met details over het leven van Percy. Gestolen foto's van Sonya leiden Ambrose en Meg naar Brandon Keyser, een ex-vriendje van Percy. In de haven doen ze een verrassende ontdekking. Regisseur: Colin Bucksey. Acteurs: Bill Pullman (Harry Ambrose), Jessica Hecht (Sonya Barzel), Parisa Fitz-Henley (Leela Burns), Eddie Martinez (Vic Soto), Matt Bomer (Jamie) (2020) Part V S04 E05. Golden Globe-genomineerde anthologieserie met Bill Pullman in de rol van detective Harry Ambrose, die zich verdiept in verbijsterende misdaden gepleegd door ogenschijnlijk doodnormale mensen.</description></episode>
-# <episode><id>06</id><filename>The Sinner 22-10-23 4x06 Episode 06</filename><name>Episode 06</name><description>Golden Globe-genomineerde anthologieserie met Bill Pullman in de rol van detective Harry Ambrose, die zich verdiept in verbijsterende misdaden gepleegd door ogenschijnlijk doodnormale mensen. Regisseur: Batan Silva. Acteurs: Bill Pullman (Harry Ambrose), Frances Fisher (Meg Muldoon), Alice Kremelberg (Percy Muldoon), Neal Huff (Sean Muldoon), Cindy Cheung (Stephanie Lam) (2021) S04 E06. Golden Globe-genomineerde anthologieserie met Bill Pullman in de rol van detective Harry Ambrose, die zich verdiept in verbijsterende misdaden gepleegd door ogenschijnlijk doodnormale mensen.</description></episode>
-# <episode><id>07</id><filename>The Sinner 22-10-30 4x07 Episode 07</filename><name>Episode 07</name><description>If the Shoe Fits S09 E05. In "Suits" maakt een vroegtijdige schoolverlater indruk op Harvey Spectre, een topadvocaat uit New York. Dat levert hem een felbegeerde baan als stagiair-advocaat op. </description></episode>
-# <episode><id>04</id><filename>The Sinner 22-10-09 4x04 Episode 04</filename><name>Episode 04</name><description>When the Muldoons push to close the investigation, Ambrose refuses, pushing Sonya to the brink.</description></episode>
-# </season>
 
 # NB To use the EPS file as XML the season blocks need to be embedded in a higher level block - episodes
-my $eprec;
-$eprec = "<episode>" .
-           "<id>" . $id . "</id>" .
-           "<filename>" . $filename . "</filename>" .
-           "<name>" . $episode . "</name>" .
-           "<description>" . $progdesc . "</description>" .
-        "</episode>";
+# my $eprec;
+# $eprec = "<episode>" .
+#            "<id>" . $id . "</id>" .
+#            "<filename>" . $filename . "</filename>" .
+#            "<name>" . $episode . "</name>" .
+#            "<description>" . $progdesc . "</description>" .
+#         "</episode>";
 
 # NB: This initialises the show directory if it doesn't exist, ie. create dir, artwork, tvshow.nfo and folder.eps
-updateeps($epsdir, $season, $id, $progname, $filename, $eprec);
-
+updateeps($epsdir, $season, $id, $progname, $filename, $episode, $progdesc);
 
 printf "Creating NFO for: %s\n", $eitfilename;
 my $nfofilename = createFileNFO($nfodir, $progname, $eitfilename, $season, $id, $episode, $progdesc);
@@ -362,151 +339,120 @@ sub getDescFromEIT
 
 sub updateeps
 {
-  my ($epsdir, $season, $id, $progname, $filename, $eprec) = @_;
-
+  my ($epsdir, $season, $id, $progname, $filename, $epname, $epdesc) = @_;
+   my $pi = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n";
   # Eventually: check for a directory epsdir/progname and create/update folder.eps in it
   # no progname directory: could check for the progname in the drama folder.eps (very very long term!!)
   # for now: create/update the epsdir/progname.eps
-  my @epslines;
+  #my @epslines;
   
   my $path = findepsfile($epsdir, $progname, 1);
   print "Updating EPS file: $path\n";
-  my $fheps;
+  my $xp;
 
   if( -e $path)
   {
-    @epslines = loadfile2array($path);
-  }
-
-  # Now for some ugly assumptions....
-  # The id start and end tags appear on the same line 
-  # The show start and end tags appear on the same line 
-  # The episode start and end tags appear on the same line, implies the filename block is in the same
-  # line as the episode block
-
-  # TODO Convert this to use an XML parser
-  # state:  0 looking for season id
-  #         1 looking for show (season end tag resets to 0, loop continues)
-  #         2 looking for filename (season end tag, insert eprec before season end tag, exit loop save file
-  #        10 epsrec updated, needs to be saved
-  #        99 entry already present just exit
-   my $state=0;
-  my $param;
-  my $i;
-  my $alen = scalar(@epslines);
-  for( $i=0; $i < $alen; $i++)
-  {
-    my $line = @epslines[$i];
-    if( $state == 0)
-    {
-      if( $line =~ m/<id>$season<\/id>/ )
-      {
-        print "Found a matching season id.\n";
-        $state = 1;
-      }
-    }
-    elsif($state == 1)
-    {
-      if( $line =~ m/<show>$progname<\/show>/i )
-      {
-        print "Found a matching season show.\n";
-        $state = 2;
-      }
-      elsif( $line =~ m/<\/season>/ )
-      {
-        print "Found endof season show.\n";
-        $state = 0;
-      }
-    }
-    elsif( $state == 2 )
-    {
-      if( $line =~ m/<filename>$filename<\/filename>/ )
-      {
-        # entry is already present
-        my $trimln = $line;
-        $trimln =~ s/^\s+|\s+$//g ;        
-        print "Filename is already present in folder.eps: [$trimln]\n";
-        $state = 99;
-
-        # TODO: Only replace if desc has changed...
-        if($trimln ne $eprec)
-        {
-          print "Replacing existing value with: [$eprec]\n";
-          splice @epslines, $i, 1, $eprec . "\n";
-          $state = 10;
-        }
-        last;
-      }
-      elsif( $line =~ m/<\/season>/ )
-      {
-        # So ID was matched and show was matched and there is no filename.
-        # Therefore so need to insert the new eprec before the current line,
-        # and write the file
-        print "Filename is not present - updating eps file\n";
-        splice @epslines, $i, 0, $eprec . "\n";
-        $state = 10;
-        last;
-      }
-
-    }
-  }
-
-  print "Exited loop with state: $state\n";
-  if( $state < 10 )
-  {
-    print "Season is not present - updating eps file\n";
-    my $seas;
-    $seas = "<season>\n";
-    $seas .= "<id>$season</id>\n";
-    $seas .= "<show>$progname</show>\n";
-    $seas .= $eprec . "\n";
-    $seas .= "</season>\n";
-    
-
-    my $len = $#epslines;
-    print "Length of current folder.eps: $len\n";
-    if($len < 1)
-    {
-      push(@epslines, "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n");
-      push(@epslines, "<episodes>\n");
-      push (@epslines, $seas);
-      push(@epslines, "</episodes>\n");
-    }
-    else
-    {
-      # Need to insert the new season between the episodes tags, if present
-      my $inspos=$len+1;
-      for(my $i = 0; $i <= $#epslines; $i++)
-      {
-         if($epslines[$i] eq "</episodes>")
-         {
-             $inspos = $i;
-             last;
-         }
-      } 
-      splice @epslines, $inspos, 0, $seas;    
-    }
-    
-    $state = 10;
-  }
-
-  if( $state == 10 )
-  {
-    print "Saving updated eps to $path\n";
-    # Seems that disabling the binmode in loadfile2array avoids the "wide character in print" warning. 
-    open($fheps, ">", $path);
-    # This magic prevents a space being inserted before each element of the array
-    # but it forks up the syntax hilighting of UE
-    # The join version does the same as using $". It means join the elements of the array using
-    # the first parameters as the separator
-    #local $"='';
-    #print $fheps "@epslines";
-    print $fheps join '', @epslines;
-    close($fheps);
+    $xp = XML::XPath->new(filename => $path);
   }
   else
   {
+    $xp = XML::XPath->new(xml => $pi . "<episodes></episodes>\n");
   }
+  my $rootnode =  $xp->find('/')->get_node(0);
+   
+  my $nodelist = $xp->find('//episodes'); # should be an XML::XPath::NodeSet of size 1
+  my $i = $nodelist->size();
+   
+  my $episodesnode = $nodelist->get_node(0);
+
+   my $xpcrit;
+   $xpcrit = "season[id = '$season' and show = '$progname']";
+   $nodelist = $xp->find($xpcrit, $episodesnode);
+   $i = $nodelist->size(); 
+  
+   if($i == 0)
+   {
+      # season not present for this id aand show so add a new season node
+      print "Trying to add season node for season $seasonnum\n";
+      my $newnode = XML::XPath::Node::Element->new("season");
+      $episodesnode->appendChild($newnode);
+
+      addTextElement($newnode, "id", $season);
+      addTextElement($newnode, "show", $progname);
+      $nodelist = $xp->find($xpcrit, $episodesnode);
+      $i = $nodelist->size();  
+      print "New Season nodelist (size=$i):\n$nodelist\n";  
+   }
+   my $seasonnode = $nodelist->get_node(0);
+
+   # When updating EPS it is for the insertion/update of a file entry. So should key on the filename
+   # and not the episode number. When searching for the description only need to use the episode number.
+   # "episode[id = '$episodenum' and filename = '$episodefile']";
+   $xpcrit = "episode[filename = '$filename']";
+   $nodelist = $xp->find($xpcrit, $seasonnode);
+   $i = $nodelist->size(); 
+  
+   if($i == 0)
+   {
+      print "Episode [$xpcrit] is NOT present: adding new episode\n";
+      # This might be easier to do by creating a string for the episode, parsing it to a node and then adding it to season
+      
+      my $newnode = XML::XPath::Node::Element->new("episode");
+      $seasonnode->appendChild($newnode);
+
+      # <episode><id>04</id><filename>The Sinner 22-10-09 4x04 Episode 04</filename><name>Episode 04</name><description>s4e4</description></episode>
+
+      addTextElement($newnode, "id", $id);
+      addTextElement($newnode, "filename", $filename);
+      addTextElement($newnode, "name", $epname);
+      addTextElement($newnode, "description", "");
+      $nodelist = $xp->find($xpcrit, $seasonnode);
+      $i = $nodelist->size(); 
+   }
+   my $episodenode = $nodelist->get_node(0);
+
+   $xpcrit = "description";
+   $nodelist = $xp->find($xpcrit, $episodenode);
+   $i = $nodelist->size(); 
+   
+   if($i == 0)
+   {
+      # Ensure we have a decription node to deal with
+      addTextElement($episodenode, "description", "");
+      $nodelist = $xp->find($xpcrit, $episodenode);
+      $i = $nodelist->size(); 
+           
+   }
+   if($i == 0)
+   {
+      print "Failed to find the 'description' entry\n";
+   }
+   my $descnode = $nodelist->get_node(0);
+   
+   # Only update the description if new value is not the same as old value and is not zero length
+   if($epdesc ne "")
+   {
+      # Assume there is only one child and it is a text node. Just to be confusing there is no
+      # hasChildNodes or get count and the getChildNodes does not return a NodeList. To make
+      # matters even worse the index for the child node is 1 based!!!!
+      my $origdesc = $descnode->getChildNode(1)->getValue();
+      if($origdesc ne $epdesc)
+      {
+         $episodenode->removeChild($descnode);
+         addTextElement($episodenode, "description", $epdesc);
+      }
+   }
+
+   # For now always re-save the XML, can add flags to indicate save is needed later if nreally necessary
+   # This can be used to serialize the XML for writing to a file. NB the processing instruction is omitted
+   my $xmlout = $xp->getNodeAsXML(); #  XML::XPath::XMLParser::as_string($rootnode);
+   my $twig = XML::Twig->new(pretty_print => 'indented');
+   $twig->parse($xmlout);
+   $xmlout = $pi . $twig->sprint;   
+
+   print "XML as string:$xmlout\n";
+   
+   saveutf8xfile($path, $xmlout);
 }
 
 # Too much hassle to figure out how to use any of the Perl XML libraries to escape the
