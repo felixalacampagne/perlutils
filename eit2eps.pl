@@ -25,8 +25,8 @@ use File::Path qw(make_path remove_tree);
 use File::Copy;
 use Digest::MD5;
 use XML::Simple;
-use XML::Twig;        # seems to automatically include XML:XPath
-use XML::Twig::XPath; 
+use XML::XPath;   # cpanm install XML::XPath
+use XML::Twig;    # Only used to pretty print the output XML        
 
 # Kludge to provide a command to create the folder artwork for a new program
 # the command should contain placeholders for the program name (#PROGNAME#) and the program directory (#PROGDIR#)
@@ -48,7 +48,7 @@ my $nforepopath = $NFOREPOPATH;
 my %opts;
 getopts('a:d:n:r:l?', \%opts);
 
-
+print "EIT2EPS v2.0\n";
 
 if( $opts{"?"} )
 {
@@ -333,7 +333,7 @@ sub getDescFromEIT
    $progdesc =~ s/Contains .*?\. *?//g;
    $progdesc =~ s/Also in HD\. *?//g;
    $progdesc =~ s/\[[S,AD]*\] *?//g;
-   printf "Final description:\n%s\n", $progdesc;
+   # printf "Final description:\n%s\n", $progdesc;
    return $progdesc;
 }
 
@@ -373,7 +373,7 @@ sub updateeps
    if($i == 0)
    {
       # season not present for this id aand show so add a new season node
-      print "Trying to add season node for season $seasonnum\n";
+      print "Trying to add season node for season $season\n";
       my $newnode = XML::XPath::Node::Element->new("season");
       $episodesnode->appendChild($newnode);
 
@@ -450,11 +450,19 @@ sub updateeps
    $twig->parse($xmlout);
    $xmlout = $pi . $twig->sprint;   
 
-   print "XML as string:$xmlout\n";
+   # print "XML as string:$xmlout\n";
    
    saveutf8xfile($path, $xmlout);
 }
 
+sub addTextElement
+{
+   my ($parent, $childname, $text) = @_;
+   my $element = XML::XPath::Node::Element->new($childname);
+   $element->appendChild(XML::XPath::Node::Text->new($text));
+   $parent->appendChild($element);
+   return;
+}
 # Too much hassle to figure out how to use any of the Perl XML libraries to escape the
 # the XML reserved characters so this will have to do for now
 sub xmlencode
@@ -495,7 +503,37 @@ sub getDescFromNFORepo
 # Doesn't appear to matter what the parent block is called, 'seasons' would be most logical
 # This is using XML::Simple which is very hard to understand/use. It would be better to use XML::libXML
 # however this is not available at all sites and requires many dependencies to be made available and compiled.
+# XML::libXML is far to hard to obtain for offline ActiveState installations however it was possible to
+# obtain XML::XPath which more or less does what's needed. So this should be converted to use XPath
 sub getDescFromEPS
+{
+   my ($epsdir, $progname, $srcseas, $srceps) = @_;
+   my $epsdesc = "";
+   my $epsfile = findepsfile($epsdir, $progname, 0);
+   if(-s $epsfile)
+   {
+      my $xp = XML::XPath->new(filename => $epsfile);
+      my $xpcrit = "//season[show = '$progname' and id='$srcseas']/episode[id='$srceps']/description/text()";
+      my $descnodes =  $xp->find($xpcrit);
+      my $i = $descnodes->size();
+      if($i > 0)
+      {
+         my $n;
+         for($n=0; $n<$i; $n++)
+         {
+            $epsdesc = $descnodes->get_node($n)->getValue();;
+            if($epsdesc ne "")
+            {
+               print "Found description for $progname ${srcseas}x$srceps: $epsdesc\n";
+               last;
+            }  
+         }
+      }
+   }
+   return $epsdesc;
+}
+
+sub getDescFromEPS_Simple
 {
    my ($epsdir, $progname, $srcseas, $srceps) = @_;
    my $epsdesc = "";
@@ -592,7 +630,7 @@ my $nforepopath = File::Spec->catdir($NFOREPOPATH, $nfoname);
    $nfocont .= "<season>" . $season . "</season>\n";
    $nfocont .= "<episode>" . $id . "</episode>\n";   
    
-   $nfocont .= "<plot>\n" . xmlencode($desc) . "\n</plot>\n";
+   $nfocont .= "<plot>" . xmlencode($desc) . "</plot>\n";
    
    # Use md5 of nfo created so far to create an id in case this is what causes Kodi to keep
    # the programmes in the list after they have been deleted.
