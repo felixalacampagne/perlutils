@@ -69,7 +69,7 @@ if( $opts{"n"})
 
 if( $opts{"r"})
 {
-   # This is where the NFO is written to
+   # This is where the NFO repository is located
    $nforepopath = $opts{"r"};
 }
 
