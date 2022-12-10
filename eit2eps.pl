@@ -120,7 +120,10 @@ my $progdesc = "";
 
 # Extract the intended program info from the filename.
 # Add non-capture group for handling of missing episode title - to be tested
-if($eitfilename =~m/^((.*?) (\d{1,2})x(\d{1,2})(?: *(.*?)))?(\..+)*$/)
+# Warning: episode numbers more than 4 characters are cutof at the fourth character
+# Should try to find a way of matching all digits to the end, when title is missing,
+# or until the first non-digit/space when title is present.
+if($eitfilename =~m/^((.*?) (\d{1,2})x(\d{2,4})(?: *(.*?)))?(\..+)*$/)
 {
    $filename = $1;
    $progname = $2;
@@ -158,6 +161,10 @@ else
    if($progdesc eq "")
    {
       # Should try to find desc from folder.eps
+      # This uses the episode number so WILL NOT work correctly if there are multiple
+      # episodes with the same ID, eg. Films.
+      # Should not be an issue when there is a generated NFO in the repo but could be a problem
+      # for manually entered items.
       $progdesc = getDescFromEPS($epsdir, $progname, $season, $id);
       
       if($progdesc eq "")

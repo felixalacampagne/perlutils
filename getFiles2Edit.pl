@@ -53,6 +53,7 @@ my @H264regexes;
 
    # SD, ie. MPEG, recordings (VU+) for Cuttermaran editing
 my @MP2regexes;
+   push(@MP2regexes, "BBC Three - ");
    push(@MP2regexes, "ITV(?: *\\+ *1)? - The Bay");
    push(@MP2regexes, "Channel 5 - ");
    push(@MP2regexes, "5STAR(?: *\\+1)? - ");
