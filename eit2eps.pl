@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+# 17-Dec-2022 v3_5 update version to avoid confusion
 # 17-Nov-2022 convert updateeps to use XML parser
 # 14-Nov-2022 Add NFO functionality
 # 12-Nov-2022 Uses NFO file from 'repository' if it exists
@@ -48,7 +49,7 @@ my $nforepopath = $NFOREPOPATH;
 my %opts;
 getopts('a:d:n:r:l?', \%opts);
 
-print "EIT2EPS v2.0\n";
+print "EIT2EPS v3.5 20221217\n";
 
 if( $opts{"?"} )
 {
