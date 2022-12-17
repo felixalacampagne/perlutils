@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+# 12-Nov-2022 Uses NFO file from 'repository' if it exists
 # 12-Nov-2021 added 'aired' based on date in filename or current date. Added MD5
 #             of nof content as unique id in hope Kodi will better recognise when programes have been deleted.
 # 03-Oct-2020 creates the NFO for none EIT files using same defaults as for folder.eps
@@ -26,6 +27,8 @@ use Digest::MD5;
 # the command should contain placeholders for the program name (#PROGNAME#) and the program directory (#PROGDIR#)
 my $gARTCMDTMPL=$ENV{ARTCMD} . "";
 
+# TODO This should become a command lien arg, possibly with a default value
+my $NFOREPOPATH="\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
 
 # script is intended for use with filename which have the date/channel info removed
 # this is to allow the EPS line to be accumulated into a .eps file with the name
@@ -48,15 +51,18 @@ if( $opts{"?"} )
 
 if( $opts{"d"})
 {
+   # This is where the program sub-directories are made
    $epsdir = $opts{"d"};
 }
+
 if( $opts{"n"})
 {
+   # This is where the NFO is written to
    $nfodir = $opts{"n"};
 }
 
 
-printf "Episode file directory: %s\n", $epsdir;
+printf "Root programme directory directory: %s\n", $epsdir;
 
 if( $opts{"l"})
 {
@@ -67,17 +73,20 @@ if( $opts{"l"})
 # before the video file is moved to there.
 if($nfodir eq "" )
 {
+   # This is WRONG! NFO should be written to the programme sub-directory by default
    $nfodir = $epsdir;
 }
 printf "NFO file directory: %s\n", $nfodir;
 $eitfile = $ARGV[0];
 
-# Default artwork file will be copied into a newly created program directory so avoid
+# Default artwork file will be copied into a newly created program directory to avoid
 # the appleTV displaying a random scene from one of the episodes. This is more annoying
 # now that all programs get their own directory.
-# The default file is the folder.jpg file in the directory where the nfos are created, ie.
-# the staging directory, unless a file is given on the command line.
-$gDefArtwork = File::Spec->catdir($nfodir, "folder.jpg");
+# The default file is the folder.jpg file in the directory where the programm sub-dirs are created 
+# unless a file is given on the command line.
+# This is obsolete now that a folder.jpg is generated for each programme sub-directory by the external
+# command.
+$gDefArtwork = File::Spec->catdir($epsdir, "folder.jpg");
 if( $opts{"a"} )
 {
    $gDefArtwork = $opts{"a"};
@@ -142,6 +151,45 @@ if($ep ne "")
 {
    $episode = $ep;
 }
+
+# There is now a 'repository' of NFO files which should be used when there is no EIT
+# or even in place of the EIT. Use of a repository NFO is the default for createFileNFO.
+# For consistency the EPS files should be updated from the content of the final NFO file
+# ... something for a rainey day!!
+# This is not working as needed at the moment... at least an entry in the folder.eps should be used if nothing else is available
+# TODO: If there is an NFO in the repo then use it for the desc
+#          - update folder.eps with the NFO desc
+#       IF there is no repo NFO then
+#          If there is an EIT desc then use it for the NFO AND update folder.eps
+#          If there is NO EIT desc and folder.eps already contain a match then use the desc from folder.eps for the NFO
+#          If there is NO EIT and NO folder.eps then use default values for folder.eps and NFO
+# example NFO for getting the desc from
+# <?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+# <episodedetails>
+# <title>Episode 04</title>
+# <showtitle>The Sinner</showtitle>
+# <season>4</season>
+# <episode>04</episode>
+# <plot>
+# The Sinner: Episode 04(4x04)
+# </plot>
+# <uniqueid type="mytvshows" default="true">36ff68056c1e85b37281f09d526bbc12</uniqueid>
+# <aired>2022-10-09</aired>
+# </episodedetails>
+# Example folder.eps
+# <season>
+# <id>4</id>
+# <show>The Sinner</show>
+# <episode><id>01</id><filename>The Sinner 22-09-18 4x01 Episode 01</filename><name>Episode 01</name><description>Tijdens een tripje met Sonya naar Hanover Island, Maine, krijgt Ambrose last van slapeloosheid. Tijdens een nachtelijke wandeling is hij er getuige van hoe een jonge vrouw van een klif springt. Regisseur: Derek Simonds. Acteurs: Bill Pullman (Harry Ambrose), Frances Fisher (Meg Muldoon), Alice Kremelberg (Percy Muldoon), Neal Huff (Sean Muldoon), Cindy Cheung (Stephanie Lam) (2021) S04 E01. Tijdens een tripje met Sonya naar Hanover Island, Maine, krijgt Ambrose last van slapeloosheid. Tijdens een nachtelijke wandeling is hij er getuige van hoe een jonge vrouw van een klif springt.</description></episode>
+# <episode><id>02</id><filename>The Sinner 22-09-25 4x02 Episode 02</filename><name>Episode 02</name><description>Golden Globe-genomineerde anthologieserie met Bill Pullman in de rol van detective Harry Ambrose, die zich verdiept in verbijsterende misdaden gepleegd door ogenschijnlijk doodnormale mensen. Regisseur: Adam Bernstein. Acteurs: Bill Pullman (Harry Ambrose), Frances Fisher (Meg Muldoon), Alice Kremelberg (Percy Muldoon), Neal Huff (Sean Muldoon), Cindy Cheung (Stephanie Lam) (2021) S04 E02. Golden Globe-genomineerde anthologieserie met Bill Pullman in de rol van detective Harry Ambrose, die zich verdiept in verbijsterende misdaden gepleegd door ogenschijnlijk doodnormale mensen.</description></episode>
+# <episode><id>03</id><filename>The Sinner 22-10-02 4x03 Episode 03</filename><name>Episode 03</name><description>Het gevonden lichaam blijkt wel degelijk dat van Percy te zijn. En hoewel de lijkschouwer besluit dat er geen sporen van geweld op het lichaam te vinden zijn, weigert Ambrose om het onderzoek af te ronden. Mike Lam vertelt hem vervolgens dat hij Percy vaak in het gezelschap van Colin zag, maar die ontkent dat. Regisseur: Radium Cheung. Acteurs: Bill Pullman (Harry Ambrose), Frances Fisher (Meg Muldoon), Alice Kremelberg (Percy Muldoon), Neal Huff (Sean Muldoon), Cindy Cheung (Stephanie Lam) (2021) S04 E04. Golden Globe-genomineerde anthologieserie met Bill Pullman in de rol van detective Harry Ambrose, die zich verdiept in verbijsterende misdaden gepleegd door ogenschijnlijk doodnormale mensen.</description></episode>
+# <episode><id>05</id><filename>The Sinner 22-10-16 4x05 Episode 05</filename><name>Episode 05</name><description>Ambrose achterhaalt het adres van Em Castillo en besluit haar een bezoekje te brengen. Wanneer ze niet thuis blijkt te zijn, breekt hij in en vindt er een notitieboekje met details over het leven van Percy. Gestolen foto's van Sonya leiden Ambrose en Meg naar Brandon Keyser, een ex-vriendje van Percy. In de haven doen ze een verrassende ontdekking. Regisseur: Colin Bucksey. Acteurs: Bill Pullman (Harry Ambrose), Jessica Hecht (Sonya Barzel), Parisa Fitz-Henley (Leela Burns), Eddie Martinez (Vic Soto), Matt Bomer (Jamie) (2020) Part V S04 E05. Golden Globe-genomineerde anthologieserie met Bill Pullman in de rol van detective Harry Ambrose, die zich verdiept in verbijsterende misdaden gepleegd door ogenschijnlijk doodnormale mensen.</description></episode>
+# <episode><id>06</id><filename>The Sinner 22-10-23 4x06 Episode 06</filename><name>Episode 06</name><description>Golden Globe-genomineerde anthologieserie met Bill Pullman in de rol van detective Harry Ambrose, die zich verdiept in verbijsterende misdaden gepleegd door ogenschijnlijk doodnormale mensen. Regisseur: Batan Silva. Acteurs: Bill Pullman (Harry Ambrose), Frances Fisher (Meg Muldoon), Alice Kremelberg (Percy Muldoon), Neal Huff (Sean Muldoon), Cindy Cheung (Stephanie Lam) (2021) S04 E06. Golden Globe-genomineerde anthologieserie met Bill Pullman in de rol van detective Harry Ambrose, die zich verdiept in verbijsterende misdaden gepleegd door ogenschijnlijk doodnormale mensen.</description></episode>
+# <episode><id>07</id><filename>The Sinner 22-10-30 4x07 Episode 07</filename><name>Episode 07</name><description>If the Shoe Fits S09 E05. In "Suits" maakt een vroegtijdige schoolverlater indruk op Harvey Spectre, een topadvocaat uit New York. Dat levert hem een felbegeerde baan als stagiair-advocaat op. </description></episode>
+# <episode><id>04</id><filename>The Sinner 22-10-09 4x04 Episode 04</filename><name>Episode 04</name><description>When the Muldoons push to close the investigation, Ambrose refuses, pushing Sonya to the brink.</description></episode>
+# </season>
+
+
 my $eprec;
 $eprec = "<episode>" .
            "<id>" . $id . "</id>" .
@@ -153,9 +201,10 @@ $eprec = "<episode>" .
 
 updateeps($epsdir, $season, $id, $progname, $filename, $eprec);
 
-# createFileNFO works for any type of filename
+
 printf "Creating NFO for: %s\n", $eitfilename;
-createFileNFO($nfodir, $progname, $eitfilename, $season, $id, $episode, $progdesc);
+my $nfofilename = createFileNFO($nfodir, $progname, $eitfilename, $season, $id, $episode, $progdesc);
+
 
 
 #######################################################
@@ -354,7 +403,7 @@ sub updateeps
       if( $line =~ m/<filename>$filename<\/filename>/ )
       {
         # entry is already present
-        print "Filename is already present: $line.\n";
+        print "Filename is already presentin folder.eps: $line.\n";
         $state = 99;
         last;
       }
@@ -451,6 +500,21 @@ my $uid = "9876";
    # Replace file extension with .nfo
    $nfoname =~ s/\.[^\.]*$/.nfo/g;
    $nfopath = File::Spec->catdir($nfopath, $nfoname);
+   if( -s $nfopath )
+   {
+      print "NFO file $nfopath already exists and will not be overwritten";
+      return $nfopath;
+   }
+   
+   # Check whether NFO file is present in the new NFO repository
+my $nforepopath = File::Spec->catdir($NFOREPOPATH, $nfoname);   
+   if( -s $nforepopath )
+   {
+      print "NFO file $nfoname is present in the NFO repository: Copying to $nfopath\n";
+      copy($nforepopath, $nfopath);
+      return $nfopath;
+   }
+      
    print "createFileNFO: creating nfo file: " . $nfopath . " for " . $vidfilename . "\n";
    my $nfocont = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n";
    $nfocont .= "<episodedetails>\n";
@@ -485,6 +549,7 @@ my $uid = "9876";
    }
    $nfocont .= "</episodedetails>\n";
    saveutf8xfile($nfopath, $nfocont);
+   return $nfopath;
 }
 
 
@@ -533,6 +598,7 @@ sub getprogrammepath
    my $lcprogname = lc $progname; 
    return File::Spec->catdir($epsdir, $lcprogname); 
 }
+
 # Searches for an .eps file in the following:
 #   <epsdir>\<progname>\folder.eps
 #   <epsdir>\drama\folder.eps show=progname
@@ -555,8 +621,6 @@ my @epslines;
     print "Creating new show directory: $path\n";
     make_path($path);
     
-    # Kludge to get default artwork into the new directory
-    # Idiot Perl has no copy file to directory command
     initArtwork($path, $progname);
 
     # Bit ugly doing it here but it avoids parsing the returned path to get the directory...

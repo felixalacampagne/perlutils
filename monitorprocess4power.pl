@@ -15,7 +15,7 @@ use lib $FindBin::Bin . "/lib"; # This indicates to look for modules in the lib 
 
 use FALC::SCULog;
 use FALC::SCUWin;
-use Date::Calc qw(Today_and_Now Delta_DHMS);
+use Date::Calc qw(Today_and_Now Delta_DHMS);  # Install on strwberry with cpanm Date::Calc
 use Fcntl qw !LOCK_EX LOCK_NB!;   # file lock to prevent multiple instances
 #use File::HomeDir;
 
