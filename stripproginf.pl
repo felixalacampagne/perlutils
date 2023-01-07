@@ -69,16 +69,25 @@ my $pat=/^\d{8} \d{4} \- .*? \- (.*$)(\..*)$/;
       }
       elsif( $file =~ m/^\d{8} \d{4} \- .*? \- (.*)(\..*)$/ ) 
       {
-         my $newname = $1;
+         my $nameonly = $1;
          my $ext = $2;
-         print "Found a file to rename: $file: name=" . $newname . ", ext= " . $ext . "\n";
-         if($newname =~ m/^(.*)\.\[\d\]$/)
+         print "Found a file to rename: $file: name=" . $nameonly . ", ext= " . $ext . "\n";
+         if($nameonly =~ m/^(.*)\.\[\d\]$/)
          {
-            $newname = $1;
-            print "Removing smartcut version number: $newname\n";
+            $nameonly = $1;
+            print "Removing smartcut version number: $nameonly\n";
          }
-         $newname =~ s/\s{2,}/ /g;
-         $newname = $newname . $ext;
+         $nameonly =~ s/\s{2,}/ /g;
+         
+         my $newname = $nameonly . $ext;
+         my $cnt = 0;
+         while( -f $newname )
+         {
+         		print "File $newname already exists\n";
+         		$cnt++;
+         		$newname = $nameonly. "." . $cnt . $ext;
+         }
+         
          print "Rename $file to $newname\n";
          move($file, $newname);
       }
