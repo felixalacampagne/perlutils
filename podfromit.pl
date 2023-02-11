@@ -4,6 +4,7 @@
 # NB The -t option results in copied files with corrupted artwork whereas the normal
 # operation of copying from the iTunes library appears to be working ok, ie. uncorrupted artwork.
 
+# 11 Feb 2023 Do not re-process already processed podcasts, ie. ones called 'WEnn'. 
 # 24 Feb 2019 Fix title set by doFixPodTag
 # 12-Feb-2019 Noticed that WE51 files have Jun dates but WE50 files have Nov dates. I think this
 #             might be related to repeated use of TDRL as the base date which is updated into
@@ -26,7 +27,10 @@
 # 27-Jun-2015 First working version integrated with podtag. Renames sources file to .done
 # 21-Jun-2015 First version. Finds the Podcasts and renames them. Result can be used with
 #
-use lib 'lib'; # Remove this when the MP3 library is added to the default installation.
+# use lib 'lib'; # Remove this when the MP3 library is added to the default installation.
+use FindBin;           # This should find the location of this script
+use lib $FindBin::Bin . "/lib"; # This indicates to look for modules in the lib directory in script location
+
 use strict;
 use warnings;
 use utf8;
@@ -165,9 +169,16 @@ foreach my $podcast (@podcasts)
    {
       my $extn = "";
       my $location = decodeutf8url($podcast->location());
-
-      $LOG->trace("Downloaded podcast: " . $podcast->album() . " Released: " . $podcast->releaseDate() . " Location: " . $location . "\n");
-      processFile($location, $podcast->album(), $gDestRootdir, $podcast->releaseDate());
+      
+      if( $podcast->album() =~ m/^WE\d\d$/ )
+      {
+         $LOG->debug("Ignoring processed podcast: " . $podcast->album() . " Location: " . $location . "\n");
+      }
+      else
+      {
+         $LOG->trace("Downloaded podcast: '" . $podcast->album() . "' Released: " . $podcast->releaseDate() . " Location: " . $location . "\n");
+         processFile($location, $podcast->album(), $gDestRootdir, $podcast->releaseDate());
+      }
    }
 }
 exit(0);
@@ -222,7 +233,7 @@ my @files;
 }
 
 # Calculate the podcast tags play order tags based on the name of the podcast file. This
-# assumes the file has been named suitably named, ie. <WEEK><TRACK>-<YEAR><MONT>DAY_<TITLE).mp3
+# assumes the file has been named suitably named, ie. <WEEK><TRACK>-<YEAR><MONTH>DAY_<TITLE).mp3
 # The tags will be updated to match the filename... in theory. At the moment there appears to be
 # a problem updating the TDRL (release date) tag with an appropriate value.
 sub doFixPodTag
