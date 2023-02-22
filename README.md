@@ -8,9 +8,9 @@ are lost in the mists of time. As including the libraries in this repo would be 
 some license or other I can only list the names here and wish anyone wanting to use the scripts all
 the luck in the world trying to find them;
 
-   MP3:Tag - Used by the podcast related scripts
-   Encode:transliterate_win1251 - probably needed by any script which uses filenames since Perl is really very bad at doing filenames when foreign characters are invovled.
-   Normalize::Text::Music_Fields - probably something to with the MP3:Tag library
+- MP3:Tag - Used by the podcast related scripts
+- Encode:transliterate_win1251 - probably needed by any script which uses filenames since Perl is really very bad at doing filenames when foreign characters are invovled.
+- Normalize::Text::Music_Fields - probably something to with the MP3:Tag library
 
 I keep these libraries together with the FALC library but they could probably be installed in the normal Perl location for libraries by a package manager, or whatever it's called, assuming they are available in whatever repository the package manager uses.
 
