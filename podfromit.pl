@@ -60,7 +60,7 @@ use Encode qw(decode encode);
 # WARNING: THe standard version of the library does not support the PCST (or RVAD) tag. A custom
 # version of the library with ID3v2.pm.diff changes applied is required to support PCST and
 # for this script to work correctly
-use MP3::Tag;   # ppm install MP3::Tag (or cpan MP3::Tag for most recent version)
+use MP3::Tag;   # cpan MP3::Tag for most recent version)
 
 my $LOG = SCULog->new();
 $LOG->level(SCULog->LOG_INFO);

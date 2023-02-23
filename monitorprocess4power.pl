@@ -1,3 +1,10 @@
+# 23-Feb-2023 Tried running for first time on system freshly installed with strawberry Perl
+#             and get 'No such file or directory' error for the lock file. Since
+#             the command is supposed to create the file the error presumably refers to
+#             the path however a cd to 'C:\Users\Public\Documents' works just fine.
+#             but trying to echo some text to a file fails. No way on this particular system 
+#             to write into Public documents from the command line but creating a new dir and writing
+#             to it works fine, so that's what will be done from now on.... until that fails as well.
 # 24 Apr 2020 fixe iambusy parameter order
 # 19 Mar 2022 uses file locking to prevent multiple instances since I came
 #    across two instance running recently-it does take a while to retrieve the 
@@ -7,20 +14,20 @@
 #    removal which, it appears, is misinformation - command prompt is not being removed, only
 #    access via the context menu and right-click start menu. Nevertheless having 
 #    MonitorProcess4Power as a Perl script should make it easier to update
-
+ 
 # TODO Check whether a single tasklist call can be made to check for all target processes
 use strict;
 use FindBin;           # This should find the location of this script
 use lib $FindBin::Bin . "/lib"; # This indicates to look for modules in the lib directory in script location
-
+use File::Path qw( make_path );
 use FALC::SCULog;
 use FALC::SCUWin;
 use Date::Calc qw(Today_and_Now Delta_DHMS);  # Install on strwberry with cpanm Date::Calc
 use Fcntl qw !LOCK_EX LOCK_NB!;   # file lock to prevent multiple instances
-#use File::HomeDir;
+
 
 my $LOG = FALC::SCULog->new();
- 
+
 $LOG->info( "Checking for alreaady running MonitorProcess4Power\n");
 #flock DATA, LOCK_EX|LOCK_NB or die "Another instance is already running-exiting\n";
 # Lock on the __DATA_ section (at the end of the file) seems to prevent Perl
@@ -32,12 +39,13 @@ $LOG->info( "Checking for alreaady running MonitorProcess4Power\n");
 # File::HomeDir->users_desktop('Public'); sounds promising but is not implemented!!!
 # Could use my_home and go up and down to Public with a relative path but that just
 # sucks since the public folder could get moved elsewhere.
-# Will rely on the PUBLIC env.var instead....
-
+# Will rely on the PUBLIC env.var instead....         
 my $docs    = $ENV{'PUBLIC'};
-$docs = $docs . "\\Documents\\";
+$docs = $docs . "\\mp4pwr";
+my $lockfile = $docs . "\\ProcessMonitor4Power.lock";
 $LOG->debug( "Public directory is: $docs\n");
-open my $file, ">", $docs . "ProcessMonitor4Power.lock" or die $!; 
+make_path $docs or die "Failed to create $docs: $!";
+open my $file, ">", $lockfile or die "Failed to open $lockfile: $!"; 
 if ( ! flock($file, LOCK_EX|LOCK_NB) )
 {
    $LOG->info( "Another instance is already running: exiting\n");
