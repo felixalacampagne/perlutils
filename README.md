@@ -46,10 +46,4 @@ Sadly the Eclipse git utility is virutally useless when it comes to merging conf
     ```
   it might be possible to put the two commands on separate lines so the mergetool is only used when there are conflicts.
   
-An alternative to using kdiff3 MIGHT be to use Notepad++ since kdiff3 is not available in all locations. According to Google notepad++ can be configured for use as the merge toold using something like;
-```
-$ git config --global --add diff.guitool nppdiff
-$ git config --global --add difftool.nppdiff.path "C:/Program Files/Notepad++/plugins/ComparePlugin/compare.exe"
-$ git config --global --add difftool.nppdiff.trustExitCode false
-```
-although the commands there do not look like they will be used for merge... maybe making the equivalent settings for the merge options will work for merging??
+Google suggests that Notepad++ might be an alternative to using kdiff3 which would be great since kdiff3 is not available in all locations. As always with cursed Unix tools if it sounds too good to be true then it is - the configureation instructions look great until you actually come to use them, there is NO 'compare.exe' in the 'standard' installation of Notepad++
