@@ -5,6 +5,10 @@ use FindBin;           # This should find the location of this script
 use lib $FindBin::Bin . '/lib'; # This indicates to look for modules in the script location
 use Data::Dumper;
 use Win32::TieRegistry ( Delimiter=>"/");
+use File::Spec;
+
+my $GSCRIPTPATH = "";
+my $PERLPATH = "";
 
 
 # HKEY_CLASSES_ROOT\Directory\shell\FolderMD5
@@ -25,12 +29,25 @@ $shellRootName = "Classes/DVD/shell/";
 addfmd5toKey($shellRootName, "-c -l -p");
 
 
+
 sub addfmd5toKey
 {
 my ($shellKeyName, $options) = @_;
 # Probably makes more sense for the perl and the script  paths to be supplied
 # as they will be common for all entries
 # chunky: C:\development\Perl64\bin\perl.exe "C:/Development/utils/perlutils\foldermd5.pl" -l -p "%1"
+if( $PERLPATH eq "" )
+{
+   $PERLPATH = $^X;
+   print "Perl executable path: $PERLPATH\n";
+}
+
+if( $GSCRIPTPATH eq "" )
+{
+   $GSCRIPTPATH =  File::Spec->catdir($FindBin::RealBin, $FindBin::RealScript) ;
+   print "Perl script path: $GSCRIPTPATH\n";
+}
+
 my $perlpath = "C:\\Development\\Perl64\\perl\\bin\\perl.exe";
 my $scriptpath = "C:\\Development\\utils\\perlutils\\foldermd5.pl";
 
