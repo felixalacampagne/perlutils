@@ -17,11 +17,12 @@ use Digest::MD5;
 use File::Spec;
 use File::Basename;
 use File::Temp qw/ tempfile tempdir /;
-use Date::Calc qw(Today_and_Now Delta_DHMS);
+use Date::Calc qw(Today_and_Now Delta_DHMS); # Not installed by default: cpanm Date::Calc
 use Cwd;
 use Encode;
 use Getopt::Std;
 use Term::ReadKey;
+use Win32;
 use Win32::API;
 use Win32::DriveInfo;  # Not installed by default: cpanm Win32::DriveInfo
 use Win32::Console; 
@@ -89,7 +90,18 @@ if( defined $opts{"r"})
 
 if( defined $opts{"w"})
 {
-   install();
+   if ( Win32::IsAdminUser != 0 )
+   {
+      install();
+   }
+   else
+   {
+      # Could use Win32::RunAsAdmin (https://metacpan.org/pod/Win32%3a%3aRunAsAdmin) which
+      # restarts the script in a Admin console, which closes immediately which is sort of ugly.
+      # No doubt workaround is possible but for now I'll keep it simple
+      print "The (re-)register option is only available when running as Administrator\n";
+   }   
+   
    exit 0;
 }
 
@@ -857,6 +869,15 @@ my $delim;
 my $cmdval;
 my $cmdxval;
 my $cmdrval;
+   
+   # According to https://perldoc.perl.org/perlvar this is the way to determine the path of the perl.exe
+   # Note that the path is usually in the old 8.3 format, no long names.
+   if ($^O ne 'VMS') {
+      $plpath .= $Config{_exe}
+      unless $plpath =~ m/$Config{_exe}$/i;
+   }
+   $plpath = "\"" . $plpath . "\"";
+   $LOG->info("Perl path: $plpath\n");
    
    $delim = $Registry->Delimiter("/");
 

@@ -31,6 +31,12 @@ my ($shellKeyName, $scriptKeyName, $options, $extended) = @_;
 # chunky: C:\development\Perl64\bin\perl.exe "C:/Development/utils/perlutils\foldermd5.pl" -l -p "%1"
 if( $GPERLPATH eq "" )
 {
+   
+my $secure_perl_path = $Config{perlpath};
+if ($^O ne 'VMS') {
+    $secure_perl_path .= $Config{_exe}
+    unless $secure_perl_path =~ m/$Config{_exe}$/i;
+}
    $GPERLPATH = $^X;
    print "Perl executable path: $GPERLPATH\n";
 }
