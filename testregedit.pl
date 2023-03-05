@@ -8,38 +8,30 @@ use Win32::TieRegistry ( Delimiter=>"/");
 use File::Spec;
 
 my $GSCRIPTPATH = "";
-my $PERLPATH = "";
-
-
-# HKEY_CLASSES_ROOT\Directory\shell\FolderMD5
-my $shellRootName = "Classes/Directory/shell/";
-
-
-# Apparently this can only be read by an Administrator. It may be that it can only be written by Admin
-# and the default access mode is read/write. Will need to experiment with that. Anyway it looks like just
-# running the app and creating the keys if they are not there will not work. It will need to be an option
-# which must be used in an administrator promp.
-
-addfmd5toKey($shellRootName, "-l -p");
-
-$shellRootName = "Classes/Drive/shell/";
-addfmd5toKey($shellRootName, "-l -p");
-
-$shellRootName = "Classes/DVD/shell/";
-addfmd5toKey($shellRootName, "-c -l -p");
-
-
+my $GPERLPATH = "";
 
 sub addfmd5toKey
 {
 my ($shellKeyName, $options) = @_;
+   addScriptEntryToKey($shellKeyName,"FolderMD5X/", $options, 0); 
+}
+
+sub addfmd5RecalctoKey
+{
+   my ($shellKeyName, $options) = @_;
+   addScriptEntryToKey($shellKeyName,"FolderMD5 RecalculateX/", $options, 1); 
+}
+
+sub addScriptEntryToKey
+{
+my ($shellKeyName, $scriptKeyName, $options, $extended) = @_;   
 # Probably makes more sense for the perl and the script  paths to be supplied
 # as they will be common for all entries
 # chunky: C:\development\Perl64\bin\perl.exe "C:/Development/utils/perlutils\foldermd5.pl" -l -p "%1"
-if( $PERLPATH eq "" )
+if( $GPERLPATH eq "" )
 {
-   $PERLPATH = $^X;
-   print "Perl executable path: $PERLPATH\n";
+   $GPERLPATH = $^X;
+   print "Perl executable path: $GPERLPATH\n";
 }
 
 if( $GSCRIPTPATH eq "" )
@@ -48,8 +40,8 @@ if( $GSCRIPTPATH eq "" )
    print "Perl script path: $GSCRIPTPATH\n";
 }
 
-my $perlpath = "C:\\Development\\Perl64\\perl\\bin\\perl.exe";
-my $scriptpath = "C:\\Development\\utils\\perlutils\\foldermd5.pl";
+my $perlpath = $GSCRIPTPATH;
+my $scriptpath = $GSCRIPTPATH;
 
 my $shellKey;   
    $shellKey = $Registry->{$shellKeyName}; # or die "No shell keys for Directory: $!\n";
@@ -67,7 +59,7 @@ my $shellKey;
    # The subkeys/values are then created and read without error BUT nothing appears in the registry!
    # For some reason DVD/shell/ is the only one which reports it cannot create the FolderMD5 key.
    # From an admin prompt it appears to work - at least it updated the values on chunky
-   my $fmdsubKeyName="FolderMD5/";
+   my $fmdsubKeyName = $scriptKeyName;
    my $fmdKey = $shellKey->{ $fmdsubKeyName };
    
    if( ! $fmdKey )
@@ -76,12 +68,15 @@ my $shellKey;
       $shellKey->{ $fmdsubKeyName } =  {"command/" => {} } ;
    }
 
-   
-
    # Always add/update the value as the path/options may have changed
    $fmdKey = $shellKey->{ $fmdsubKeyName };
    if( $fmdKey )
    {
+      if( $extended == 1 )
+      {
+         $fmdKey->{'/Extended'} = "";
+      }
+      
       my $cmdKey = $fmdKey->{"command/"};
       if( $cmdKey )
       {
@@ -103,3 +98,44 @@ my $shellKey;
    }
 
 }
+
+####### main part of prgram - should be a function so it canbe added to foldermd5 'as-is'
+
+# HKEY_CLASSES_ROOT\Directory\shell\FolderMD5
+my $shellRootName = "";
+
+
+# Apparently this can only be read by an Administrator. It may be that it can only be written by Admin
+# and the default access mode is read/write. Will need to experiment with that. Anyway it looks like just
+# running the app and creating the keys if they are not there will not work. It will need to be an option
+# which must be used in an administrator prompt.
+
+# There is some scope here for iterating over a list but note that not all options are the same
+$shellRootName = "Classes/Directory/shell/";
+addfmd5toKey($shellRootName, "-l -p");
+
+$shellRootName = "Classes/Drive/shell/";
+addfmd5toKey($shellRootName, "-l -p");
+
+$shellRootName = "Classes/DVD/shell/";
+addfmd5toKey($shellRootName, "-c -l -p");
+
+# Previously these were under 'FolderMD5 Update' but now use the same name as for Drive,Directory
+$shellRootName = "Classes/iTunes.m4v/shell/";
+addfmd5toKey($shellRootName, "-l -p");
+
+$shellRootName = "Classes/WMP11.AssocFile.MP3/shell/";
+addfmd5toKey($shellRootName, "-l -p");
+
+$shellRootName = "Classes/WMP.FlacFile/shell/";
+addfmd5toKey($shellRootName, "-l -p");
+
+$shellRootName = "Classes/WMP11.AssocFile.MP4/shell/";
+addfmd5toKey($shellRootName, "-l -p");
+
+# The other type of key is for the 'Extended' context menu entry, the 'Shift-click' menu,
+# where the force recalculate item appears, ie. 'FolderMD5 Recalculate'
+# This is only added for Drive and Directory (makes no sense for DVD which is assumed to be read only)
+# This requires the '"Extended"="' value adding to the 'FolderMD5 Recalculate' key.
+addfmd5RecalctoKey("Classes/Drive/shell/", "-r -l -p");
+addfmd5RecalctoKey("Classes/Directory/shell/", "-r -l -p");
