@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# 06 May 2022 Improve installation procedure.
+# 06 May 2022 Improve installation procedure. Version info. (No constant LOG or CONSOLE)
 # 09 Feb 2022 Uses shared logging module. Can configure Windows registry with current script location
 # 26 Apr 2019 Update the console title with name of directory being processed. Handy when the
 #             output is directed to a log file, eg. when run from context menu.
