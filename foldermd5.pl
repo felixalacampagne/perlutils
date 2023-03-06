@@ -850,7 +850,7 @@ state $pauseonexit = 0;
 }
 
 # Installs the application into the Windows registry so it appears in the right-click context menus
-# The current locaiton of the script is used for the registry entries. The current location should
+# The current location of the script is used for the registry entries. The current location should
 # contain the 'lib' folder with the user defined Perl modules.
 # Execution of this function will require Administrator privileges.
 use Config;
@@ -881,70 +881,66 @@ my $cmdrval;
    
    $delim = $Registry->Delimiter("/");
 
-   # Should be possible to run the perl command without going via a cmd script
-   #$cmdval  = "cmd /c \"%\"" . $apppath . "%\" -l -p %\"%1%\"\"";
-   #$cmdxval = "cmd /c \"%\"" . $apppath . "%\" -r -l -p %\"%1%\"\"";
-   #$cmdrval = "cmd /c \"%\"" . $apppath . "%\"-c -l -p %\"%1%\"\"";
    $cmdval  = $plpath . " \"" . $apppath .    "\" -l -p \"%1\"";
    $cmdxval = $plpath . " \"" . $apppath . "\" -r -l -p \"%1\"";
    $cmdrval = $plpath . " \"" . $apppath . "\" -c -l -p \"%1\"";
-# [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5\command]
-# @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
+
+   # [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5\command]
+   # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
    $shellkey = delimitkey("Classes","Directory");
    $appkeyname = "FolderMD5";
-   addShellCommand($shellkey, $appkeyname, $cmdval, 0);  # $rootkeyname, $appname, $cmd, $ext
+   addShellCommand($shellkey, $appkeyname, $cmdval, 0);
 
-# [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5 Recalculate] "Extended"=""
-# [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5 Recalculate\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -r -l -p %\"%1%\"\""
+   # [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5 Recalculate] "Extended"=""
+   # [HKEY_CLASSES_ROOT\Directory\shell\FolderMD5 Recalculate\command] 
+   # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -r -l -p %\"%1%\"\""
    $appkeyname = "FolderMD5 Recalculate";
-   addShellCommand($shellkey, $appkeyname, $cmdxval, 1);  # $rootkeyname, $appname, $cmd, $ext
-   
+   addShellCommand($shellkey, $appkeyname, $cmdxval, 1);
 
-# [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5\command]
-# @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %1\""
+   # [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5\command]
+   # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %1\""
    $shellkey = delimitkey("Classes", "Drive");
    $appkeyname = "FolderMD5";
-   addShellCommand($shellkey, $appkeyname, $cmdval, 0);  # $rootkeyname, $appname, $cmd, $ext
+   addShellCommand($shellkey, $appkeyname, $cmdval, 0);
 
-# 
-# [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5 Recalculate]  "Extended"=""
-# [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5 Recalculate\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -r -l -p %1\""
+   # [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5 Recalculate]  "Extended"=""
+   # [HKEY_CLASSES_ROOT\Drive\shell\FolderMD5 Recalculate\command] 
+   # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -r -l -p %1\""
    $appkeyname = "FolderMD5 Recalculate";
-   addShellCommand($shellkey, $appkeyname, $cmdxval, 1);  # $rootkeyname, $appname, $cmd, $ext
-
-
-# [HKEY_CLASSES_ROOT\DVD\shell\FolderMD5\command]
-# @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -c -l -p %\"%1%\"\""
-
+   addShellCommand($shellkey, $appkeyname, $cmdxval, 1);
    
+   # [HKEY_CLASSES_ROOT\DVD\shell\FolderMD5\command]
+   # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -c -l -p %\"%1%\"\""
    $shellkey = delimitkey("Classes", "DVD");
    $appkeyname = "FolderMD5";
-   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
+   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);
 
-# [HKEY_CLASSES_ROOT\WMP11.AssocFile.M4A\shell\FolderMD5 Update\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
+   # [HKEY_CLASSES_ROOT\WMP11.AssocFile.M4A\shell\FolderMD5 Update\command]
+   # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
    $shellkey = delimitkey("Classes", "WMP11.AssocFile.M4A");
    $appkeyname = "FolderMD5 Update";
-   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
-
+   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);
  
-# [HKEY_CLASSES_ROOT\iTunes.m4v\shell\FolderMD5 Update\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
+   # [HKEY_CLASSES_ROOT\iTunes.m4v\shell\FolderMD5 Update\command]
+   # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
    $shellkey = delimitkey("Classes", "iTunes.m4v");
-   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
-
+   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);
  
-# [HKEY_CLASSES_ROOT\WMP11.AssocFile.MP3\shell\FolderMD5 Update\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
+   # [HKEY_CLASSES_ROOT\WMP11.AssocFile.MP3\shell\FolderMD5 Update\command]
+   # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
    $shellkey = delimitkey("Classes", "WMP11.AssocFile.MP3");
-   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
+   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);
 
- 
-# [HKEY_CLASSES_ROOT\WMP.FlacFile\shell\FolderMD5 Update\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
+   # [HKEY_CLASSES_ROOT\WMP.FlacFile\shell\FolderMD5 Update\command]
+   # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
    $shellkey = delimitkey("Classes", "WMP11.FlacFile");
-   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
+   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);
 
 
-# [HKEY_CLASSES_ROOT\WMP11.AssocFile.MP4\shell\FolderMD5 Update\command] @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
+   # [HKEY_CLASSES_ROOT\WMP11.AssocFile.MP4\shell\FolderMD5 Update\command]
+   # @="cmd /c \"%\"C:\\Program Files\\Utils\\foldermd5.cmd%\" -l -p %\"%1%\"\""
    $shellkey = delimitkey("Classes", "WMP11.AssocFile.MP4");
-   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);  # $rootkeyname, $appname, $cmd, $ext
+   addShellCommand($shellkey, $appkeyname, $cmdrval, 0);
 }
 
 sub addShellCommand # $rootkeyname, $appname, $cmd, $ext
@@ -969,29 +965,43 @@ my $result;
    } 
  
    my $appkey = $shellkey->Open($appname . $delim);
-   if(defined($appkey))
+   if( ! defined($appkey))
    {
-      $LOG->info($appkey->Path ." key already exists: deleting\n");
-      deleteReg($shellkey, $appname . $delim);
+      $LOG->info($appname ." key does not exist: creating\n");
+      $appkey = $shellkey->CreateKey($appname);
+      # deleteReg($shellkey, $appname . $delim);
    }
 
-   $appkey = $shellkey->CreateKey($appname);
+   # $appkey = $shellkey->CreateKey($appname);
    if(! defined($appkey))
    {
-      $LOG->info("Failed to create key: $appname \n");
+      $LOG->info("Failed to open/create key: $appname \n");
       die(1);
    }
-   my $cmdkey = $appkey->CreateKey("command");
+   
+   my $cmdkey = $appkey->Open("command" . $delim);
+   
+   
    if(! defined($cmdkey))
    {
-      $LOG->info("Failed to create key: $appname/command \n");
-
-      die(1);
+      $cmdkey = $appkey->CreateKey("command");
+      if(! defined($cmdkey) )
+      {
+         $LOG->info("Failed to create/open key: $appname/command \n");
+         die(1);
+      }
    }
+   
    
    if($ext > 0)
    {
       $result = $appkey->SetValue("Extended", "");
+   }
+   else
+   {
+      # Delete the extended value - didn't find a DeleteValue method so must use the 'hash' notation
+      # with delim prefix to indicate it is a value
+      delete $appkey->{$delim . "Extended"};
    }
    $result = $cmdkey->SetValue("", $cmd);   
    return $result;
