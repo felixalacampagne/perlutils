@@ -29,7 +29,10 @@ use Win32::DriveInfo;  # Not installed by default: cpanm Win32::DriveInfo
 use Win32::Console; 
 use FALC::SCULog;
 
-use constant { VERSION => "23.03.06", LOG => FALC::SCULog->new(), CONSOLE => Win32::Console->new};
+use constant { VERSION => "23.03.06" };
+my $LOG = FALC::SCULog->new();
+
+my $CONSOLE=Win32::Console->new;
 
 # Must be positioned at the start of the script before the get/inc funcs are used otherwise
 # the hash is not initialised even though there is no syntax error for the
@@ -70,7 +73,7 @@ if( defined $opts{"k"})
 }
 if( defined $opts{"v"})
 {
-   LOG->level(FALC::SCULog->LOG_DEBUG);
+   $LOG->level(FALC::SCULog->LOG_DEBUG);
 }
 
 if( defined $opts{"l"})
@@ -177,7 +180,7 @@ do
       
       if(!open ($logfh, '>>', $logfilename))
       {
-         LOG->warn("Failed to open log file $logfilename: $!\n");
+         $LOG->warn("Failed to open log file $logfilename: $!\n");
          $vollbl = (Win32::DriveInfo::VolumeInfo((File::Spec->splitpath($startdir))[0]))[0];
 
          $logname = "md5_" . $ts . "_" . $vollbl . ".log";
@@ -187,14 +190,14 @@ do
          
          if(!open ($logfh, '>>', $logfilename))
          {
-            LOG->warn("WARN: Failed to open log file $logfilename: $!\n");
-            LOG->warn("WARN: Logging to screen only\n");
+            $LOG->warn("WARN: Failed to open log file $logfilename: $!\n");
+            $LOG->warn("WARN: Logging to screen only\n");
             LogToFile(0);
          }
       }
       if(LogToFile() > 0)
       {
-         LOG->info("Redirecting output to " . $logfilename . "\n");
+         $LOG->info("Redirecting output to " . $logfilename . "\n");
          # Extra attempt to get the output visible in UltraEdit during the processing
          $logfh->autoflush(1); 
          # select new filehandle
@@ -206,11 +209,11 @@ do
    
    if ( SkipCheck() == 1 )
    {
-      LOG->info("Skip CHECK is SET\n");
+      $LOG->info("Skip CHECK is SET\n");
    }
    if ( SkipCalc() == 1 )
    {
-      LOG->info("Skip CALC is SET\n");
+      $LOG->info("Skip CALC is SET\n");
    }
    
    # This bit of perl black magic is supposed to make stdout flush 
@@ -225,42 +228,42 @@ do
    {
       if($vollbl eq "")
       {
-         LOG->info("Processing directory: %s\n", $startdir);
+         $LOG->info("Processing directory: %s\n", $startdir);
       }
       else
       {
-         LOG->info("Processing Disk: %s directory: %s\n", $vollbl, $startdir);
+         $LOG->info("Processing Disk: %s directory: %s\n", $vollbl, $startdir);
       }
-      LOG->info("Started at:                 %s\n", ymdhmsString(@starttime));
+      $LOG->info("Started at:                 %s\n", ymdhmsString(@starttime));
       processDir($startdir);
    }
    elsif( isFileForMD5($startdir) )
    {
-      LOG->info("MD5 update: %s\n", $startdir);
-      LOG->info("Started at:                 %s\n", ymdhmsString(@starttime));
+      $LOG->info("MD5 update: %s\n", $startdir);
+      $LOG->info("Started at:                 %s\n", ymdhmsString(@starttime));
       updateFileMD5($startdir);
    }
    else
    {
-      LOG->info("Processing of $startdir not supported");
+      $LOG->info("Processing of $startdir not supported");
    }   
    
 
    @endtime = Today_and_Now();
    my @elapsed = Delta_DHMS(@starttime, @endtime); # ($days,$hours,$minutes,$seconds)
    settitle("Done!");
-   LOG->info("Finished at:                %s\n", ymdhmsString(@endtime));
-   LOG->info("Elapsed:                    %02d:%02d:%02d\n", $elapsed[1],$elapsed[2],$elapsed[3]);
-   LOG->info("Total directories:          " . getTotdirs() . "\n");
-   LOG->info("Directories requiring MD5s: " . getTotmd5dirs() . "\n");
-   LOG->info("Folder MD5s calculated:     " . getTotcalcmd5() . "\n");
-   LOG->info("Folder MD5s checked:        " . getTotchkmd5() . "\n");
+   $LOG->info("Finished at:                %s\n", ymdhmsString(@endtime));
+   $LOG->info("Elapsed:                    %02d:%02d:%02d\n", $elapsed[1],$elapsed[2],$elapsed[3]);
+   $LOG->info("Total directories:          " . getTotdirs() . "\n");
+   $LOG->info("Directories requiring MD5s: " . getTotmd5dirs() . "\n");
+   $LOG->info("Folder MD5s calculated:     " . getTotcalcmd5() . "\n");
+   $LOG->info("Folder MD5s checked:        " . getTotchkmd5() . "\n");
    
-   my $fnptr = sub{LOG->info(@_)};
+   my $fnptr = sub{$LOG->info(@_)};
    if(getTotfailmd5dir() > 0)
    {
       # If a dir failed then there must be some files which failed
-      $fnptr = sub{LOG->warn(@_)};
+      $fnptr = sub{$LOG->warn(@_)};
    }
    &$fnptr("Failed folder MD5s:         " . getTotfailmd5dir() . "\n");
    &$fnptr("Failed file MD5s:           " . getTotfailmd5file() . "\n");
@@ -322,11 +325,11 @@ my ($filename,$directories,$suffix) = fileparse( $fullfile );
 my $md5new = calcmd5($directories, [$filename]);    # NB the [] seems to imply a reference to the anonymous array of 1...
 my $foldermd5path = File::Spec->catdir($directories, "folder.md5");
 
-   LOG->debug("Calculated MD5:  New value: $md5new\n");
+   $LOG->debug("Calculated MD5:  New value: $md5new\n");
 
    if( -e $foldermd5path)
    {
-      LOG->debug("MD5 file already exists: $foldermd5path\n");
+      $LOG->debug("MD5 file already exists: $foldermd5path\n");
       my @md5s = loadfile2array(File::Spec->catdir($directories, "folder.md5"));
       my $hash;
       my $name;
@@ -345,7 +348,7 @@ my $foldermd5path = File::Spec->catdir($directories, "folder.md5");
             }
             else
             {
-               LOG->debug("File is present in folder.md5: Old value: $md5\n");
+               $LOG->debug("File is present in folder.md5: Old value: $md5\n");
                $foldermd5new .= $md5new;
                $md5new = "";
             }
@@ -445,13 +448,13 @@ my $pwrcmd;
    
    $pwrcmd = sprintf("powercfg -SETACTIVE %s", $scheme);
    system($pwrcmd);
-   LOG->debug("Command '%s' return code: %i: %s\n", $pwrcmd, ($? >> 8), $!);
+   $LOG->debug("Command '%s' return code: %i: %s\n", $pwrcmd, ($? >> 8), $!);
 }
 
 sub settitle
 {
 my $title = shift;
-CONSOLE->Title('fMD5 v' . VERSION . ': ' . $title);
+$CONSOLE->Title('fMD5 v' . VERSION . ': ' . $title);
 }
 
 # Param: mode - 1 idle, power saving enabled, 0 busy, prevent power saving
@@ -479,11 +482,11 @@ sub wakeywakey
       # This should just reset the idle timer back to zero
       #print "Calling SetThreadExecutionState with 'System Required'\n";
       my $rc = $SetThreadExecutionState->Call($ES_SYSTEM_REQUIRED);
-      LOG->debug("'System Required' sent... ");
+      $LOG->debug("'System Required' sent... ");
    }
    else
    {
-      LOG->error("SetThreadExecutionState did NOT load!!  ");
+      $LOG->error("SetThreadExecutionState did NOT load!!  ");
    }
 }
 
@@ -542,7 +545,7 @@ my $hasmd5 = 0;
       # chdir($curdir);
       if(SkipCheck() == 0)
       {
-         LOG->debug("Checking $curdir\n");
+         $LOG->debug("Checking $curdir\n");
          @fails = checkmd5($curdir, "folder.md5");
          # Supposed cause print to flush - but it doesn't work when
          # a filehandle is selected for print output. Doesn't work after
@@ -556,10 +559,10 @@ my $hasmd5 = 0;
             binmode select, ":encoding(UTF-8)";
             # NB Non-ascii characters do not print correctly, even using the same encoding
             # as is used for accessing the files - fking Perl
-            LOG->warn("Mismatches:\n" . $failfiles . "\nFAIL    : $curdir\n");
+            $LOG->warn("Mismatches:\n" . $failfiles . "\nFAIL    : $curdir\n");
             
          }
-         LOG->debug("OK:   %s\n", $curdir);
+         $LOG->debug("OK:   %s\n", $curdir);
       }
    }
    elsif(@md5files > 0)
@@ -572,7 +575,7 @@ my $hasmd5 = 0;
             close(FILE);
             incTotmd5dirs();
             incTotcalcmd5();
-            LOG->info("Calculating MD5s: $curdir\n");
+            $LOG->info("Calculating MD5s: $curdir\n");
             # Not sure if sort can be done into the same variable
             my @srtmd5files = sort @md5files;
    
@@ -581,7 +584,7 @@ my $hasmd5 = 0;
          }
          else
          {
-            LOG->warn("Skipping MD5 calculation for " . $curdir . ". Unable to create MD5 file " . $foldermd5 . ": " . $! . "\n");
+            $LOG->warn("Skipping MD5 calculation for " . $curdir . ". Unable to create MD5 file " . $foldermd5 . ": " . $! . "\n");
          }         
       }
    }
@@ -596,7 +599,7 @@ my $hasmd5 = 0;
       # update.
       setpowersaving(0);
       
-      LOG->info("Processing: " . $subdir ."\n");
+      $LOG->info("Processing: " . $subdir ."\n");
       processDir($subdir);
    }
 }
@@ -655,7 +658,7 @@ my $fullfile;
       }
       else
       {
-         LOG->info("checkmd5: Non-md5sum line found: '$md5'\n");
+         $LOG->info("checkmd5: Non-md5sum line found: '$md5'\n");
       }
    }
    
@@ -701,7 +704,7 @@ my $fh;
    if($@)
    { 
       # What does this mean, again... some sort of error??   
-      LOG->warn($@);
+      $LOG->warn($@);
       return "";
    }  
    
@@ -729,7 +732,7 @@ my ($path, $data) = @_;
    }
    else
    {
-      LOG->warn("Failed to create MD5 file: " . $path . " : " . $! . "\n");
+      $LOG->warn("Failed to create MD5 file: " . $path . " : " . $! . "\n");
    }
 }
 
@@ -880,10 +883,10 @@ my $cmdrval;
       unless $plpath =~ m/$Config{_exe}$/i;
    }
    $plpath = "\"" . $plpath . "\"";
-   LOG->info("Perl path: $plpath\n");
+   $LOG->info("Perl path: $plpath\n");
    
    $apppath = File::Spec->canonpath($apppath); # Convert / into \ which is better for the registry
-   LOG->info("Script path: $apppath\n");
+   $LOG->info("Script path: $apppath\n");
    
    $delim = $Registry->Delimiter("/");
 
@@ -958,7 +961,7 @@ my $result;
 
    if(!defined($rootkey))
    {
-      LOG->info("addShellCommand: key '$rootkeyname' does not exist\n");
+      $LOG->info("addShellCommand: key '$rootkeyname' does not exist\n");
       return 1;
    } 
 
@@ -966,14 +969,14 @@ my $result;
    my $shellkey = $rootkey->CreateKey("shell"); 
    if(!defined($shellkey))
    {
-      LOG->info("addShellCommand: " . $rootkey->Path . " key 'shell/' is not available\n");
+      $LOG->info("addShellCommand: " . $rootkey->Path . " key 'shell/' is not available\n");
       die 0;
    } 
  
    my $appkey = $shellkey->CreateKey($appname . $delim);
    if( ! defined($appkey))
    {
-      LOG->info($appname .": Failed to create/open key\n");
+      $LOG->info($appname .": Failed to create/open key\n");
       die(1);
       #$appkey = $shellkey->CreateKey($appname);
       # deleteReg($shellkey, $appname . $delim);
@@ -982,7 +985,7 @@ my $result;
    # $appkey = $shellkey->CreateKey($appname);
    #if(! defined($appkey))
    #{
-   #   LOG->info("Failed to open/create key: $appname \n");
+   #   $LOG->info("Failed to open/create key: $appname \n");
    #   die(1);
    #}
    
@@ -992,7 +995,7 @@ my $result;
       #$cmdkey = $appkey->CreateKey("command");
       #if(! defined($cmdkey) )
       #{
-         LOG->info("Failed to create/open key: $appname/command \n");
+         $LOG->info("Failed to create/open key: $appname/command \n");
          die(1);
       #}
    }
@@ -1027,13 +1030,13 @@ sub deleteReg {
    for(  eval { keys %{$key->{$name}} }  ) 
    {
       my $sub = $_;
-      LOG->trace("deleteReg: sub=$sub\n");
+      $LOG->trace("deleteReg: sub=$sub\n");
       if($sub ne $delim)  # Last item appears to be just a single delim
       {
          deleteReg( $key, "$name$sub" );
       }
    }
-    LOG->debug("deleteReg: key=" . $key->Path . " name=$name\n");
+    $LOG->debug("deleteReg: key=" . $key->Path . " name=$name\n");
     delete $key->{$name};
 }
 
