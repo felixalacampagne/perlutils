@@ -37,13 +37,12 @@ my @H264regexes;
    # push(@H264regexes, "Play4 - ");
    push(@H264regexes, "VTM 2 HD - ");
    push(@H264regexes, "BBC .* HD - Doctor Who");
-   push(@H264regexes, "BBC .* HD - Killing Eve");
 
    # push(@H264regexes, "BBC Two HD - ");
-   push(@H264regexes, "BBC Three HD - ");
+   # push(@H264regexes, "BBC Three HD - ");
    # push(@H264regexes, "BBC Four HD - ");
    push(@H264regexes, "ITV HD - ");
-   push(@H264regexes, "Channel 4 HD - ");
+   # push(@H264regexes, "Channel 4 HD - ");
    
    
    # Non-HD H264 channels (VU+) for SmartCut editing
@@ -54,12 +53,11 @@ my @H264regexes;
    # SD, ie. MPEG, recordings (VU+) for Cuttermaran editing
 my @MP2regexes;
    push(@MP2regexes, "BBC Three - ");
-   push(@MP2regexes, "ITV(?: *\\+ *1)? - The Bay");
+   # push(@MP2regexes, "ITV(?: *\\+ *1)? - The Bay");
    push(@MP2regexes, "Channel 5 - ");
-   push(@MP2regexes, "5STAR(?: *\\+1)? - ");
-   push(@MP2regexes, "Channel 4(?: *\\+ *1)? - ");
-   push(@MP2regexes, "E4(?: *\\+1)? - ");
-   push(@MP2regexes, "ITV2(?: *\\+1)? - The Vampire Diaries");
+   # push(@MP2regexes, "5STAR(?: *\\+1)? - ");
+   # push(@MP2regexes, "Channel 4(?: *\\+ *1)? - ");
+   # push(@MP2regexes, "E4(?: *\\+1)? - ");
    push(@MP2regexes, "ITV4 - The Americans");
 
    # For all recordings (DB7025) for Cuttermaran editing
