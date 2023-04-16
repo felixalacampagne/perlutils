@@ -301,7 +301,7 @@ my $trackname;
 
    $LOG->info("doFixPodTag: File: $mp3file, Week: $week, TrackID: $trackid, Date: $year-$month-$day\n");
 
-   # Add podcast tags to cpoy
+   # Add podcast tags to copy
 
    doPodcastTags($mp3path, $trackname, $week, $trackid, $year, $month, $day, $hour, $minute);
 
@@ -444,7 +444,7 @@ my $trackname;
 
    $renameto = sprintf("%s-%04d%02d%02d_%s", $trackid, $year, $month, $day, $destfilename);
    # trackname is really the value for TITLE tag. iTunes doesn't seem to like to sort numerically so prefix with alphas
-   $trackname = sprintf("cp%s-%s-%04d%02d%02d", $trackid, $title, $year, $month, $day);
+   $trackname = sprintf("%s-%s-%04d%02d%02d", $trackid, $title, $year, $month, $day);
    $wedir = File::Spec->catdir($destrootdir, sprintf("we%02d", $week));
    $renameto = File::Spec->catdir($wedir, $renameto);
 
@@ -704,12 +704,14 @@ my $westr = sprintf("WE%02d", $week);
    $id3v2->remove_frame("TPE2");
    $id3v2->add_frame("TPE2", $gShowName . " ALB ART"); #$westr);
 
-   # Sorting on xxx
+   # TSOA: Sort As Podcast
+   $id3v2->remove_frame("TSOA");
+   $id3v2->add_frame("TSOA", $gShowName . " TSOA"); #$westr);
+
+   # TSOP: Sort As Author 
    $id3v2->remove_frame("TSOP");
    $id3v2->add_frame("TSOP", "Chris TSOP"); #$westr);
-   $id3v2->remove_frame("TSOA");
-   $id3v2->add_frame("TSOA", "Chris TSOA"); #$westr);
-
+   
    # Track no.
    $id3v2->remove_frame("TRCK");
    $id3v2->add_frame("TRCK", "1"); # $trackid);
