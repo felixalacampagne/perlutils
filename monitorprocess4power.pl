@@ -1,3 +1,6 @@
+# 30-Mar-2023 So now creating the (already existing) directory in 'C:\Users\Public' now
+#             fails (as predicted) for no discerable reason. For now the lock on the
+#             file seems to still work ok... until that too fails, of course
 # 23-Feb-2023 Tried running for first time on system freshly installed with strawberry Perl
 #             and get 'No such file or directory' error for the lock file. Since
 #             the command is supposed to create the file the error presumably refers to
@@ -5,7 +8,7 @@
 #             but trying to echo some text to a file fails. No way on this particular system 
 #             to write into Public documents from the command line but creating a new dir and writing
 #             to it works fine, so that's what will be done from now on.... until that fails as well.
-# 24 Apr 2020 fixe iambusy parameter order
+# 24 Apr 2020 fix iambusy parameter order
 # 19 Mar 2022 uses file locking to prevent multiple instances since I came
 #    across two instance running recently-it does take a while to retrieve the 
 #    initial tasklist so I guess the two within 4 or 5 seconds of each together. File
@@ -44,7 +47,7 @@ my $docs    = $ENV{'PUBLIC'};
 $docs = $docs . "\\mp4pwr";
 my $lockfile = $docs . "\\ProcessMonitor4Power.lock";
 $LOG->debug( "Public directory is: $docs\n");
-make_path $docs or die "Failed to create $docs: $!";
+make_path $docs or print "IGNORING: Failed to create $docs: $!\n";
 open my $file, ">", $lockfile or die "Failed to open $lockfile: $!"; 
 if ( ! flock($file, LOCK_EX|LOCK_NB) )
 {
