@@ -4,8 +4,26 @@
 # NB The -t option results in copied files with corrupted artwork whereas the normal
 # operation of copying from the iTunes library appears to be working ok, ie. uncorrupted artwork.
 
+# 11 Jun 2023 Completely given up on the Podcast app and now trying to use VLC. VLC has the advantage that is
+#             can copy files directly from the NAS onto the phone. Having the files to copy distributed over
+#             many sub-dirs is annoying so now they will be grouped by year. Unfortunatley at the moment
+#             VLC strips off the tags when it downloads the file (who the hell thinks that is a good idea - typical
+#             bloody Unix think). Luckily I discovered from a post complaining about this behaviour that it is possible
+#             to use the Files app to download files directly onto the iPhone. There is a 'Connect to server' option
+#             in Files, with no explanation and which does not work with a simple servername. The trick is to
+#             prefix the servername with 'smb://'. Files will then connect to the NAS - but then gives an unknown error - 
+#             typical Apple shirt, promises to be useful but turns out the be completely useless. Well not quite useless
+#             as it connects to Minnie and can download files from it. I suspect the NAS error is related to the old version
+#             of SMB as I had something similar with Kodi until they realised the stupidity of removing support for the
+#             old version. So if VLC doesn't fix the tag bug soon I will have to start saving the podcasts on Minnie - the
+#             1TB external disk would be great for this. Unfortunately the tag issue isn't the only problem VLC has - it
+#             does not remember the last file being played, let alone the last position in the file, which is extrememly 
+#             annoying when I accidentally close VLC with an unfinished podcast, or even when I open VLC a week later and
+#             don't recall which podcast I finished last. Alas there isn't really a better alternative - everything else
+#             I've tried requires money to be usable (ie. the free ones are not free if they are to be useable), although 
+#             I might need to reconsider in light of being able to transfer the podcasts directly via the Files app.
 # 15 Apr 2023 Yet more problems with Podcast app on iPhone - now it deletes the files after an hour or two.
-#             No idea how to solve that bu maybe making the podcasts fit in better with the Applethink
+#             No idea how to solve that but maybe making the podcasts fit in better with the Applethink
 #             might help. So add all the podcast files to a single podcast, aka. 'the show', it'll be easier to manage
 #             in iTunes at least.
 # 11 Feb 2023 Do not re-process already processed podcasts, ie. ones called 'WEnn'. 
@@ -29,7 +47,7 @@
 #             performed. This way iTunes stays consistent, doesn't redownload files, and can
 #             be used to delete the podcasts, which also helps in keeping it consistent.
 # 27-Jun-2015 First working version integrated with podtag. Renames sources file to .done
-# 21-Jun-2015 First version. Finds the Podcasts and renames them. Result can be used with
+# 21-Jun-2015 First version. Finds the Podcasts and renames them. 
 #
 # use lib 'lib'; # Remove this when the MP3 library is added to the default installation.
 use FindBin;           # This should find the location of this script
@@ -445,7 +463,7 @@ my $trackname;
    $renameto = sprintf("%s-%04d%02d%02d_%s", $trackid, $year, $month, $day, $destfilename);
    # trackname is really the value for TITLE tag. iTunes doesn't seem to like to sort numerically so prefix with alphas
    $trackname = sprintf("%s-%s-%04d%02d%02d", $trackid, $title, $year, $month, $day);
-   $wedir = File::Spec->catdir($destrootdir, sprintf("we%02d", $week));
+   $wedir = File::Spec->catdir($destrootdir, sprintf("yr%04d", $year)); #sprintf("we%02d", $week));
    $renameto = File::Spec->catdir($wedir, $renameto);
 
    if( -e $renameto)
@@ -456,14 +474,14 @@ my $trackname;
 
    $LOG->info("doPodTag: File: $mp3file, Week: $week, TrackID: $trackid, New filename: $renameto\n");
 
-   # Create WExx directory
+   # Create destination directory
    unless(-d $wedir)
    {
       $LOG->info("doPodTag: Creating podcast directory: '" . $wedir . "'\n");
       make_path($wedir)  ;
    }
 
-   # Copy the file to Wexx directory
+   # Copy the file to destination directory
 
    if(!copy($mp3file, $renameto))
    {
