@@ -4,6 +4,10 @@
 # NB The -t option results in copied files with corrupted artwork whereas the normal
 # operation of copying from the iTunes library appears to be working ok, ie. uncorrupted artwork.
 
+# 15 Apr 2023 Yet more problems with Podcast app on iPhone - now it deletes the files after an hour or two.
+#             No idea how to solve that bu maybe making the podcasts fit in better with the Applethink
+#             might help. So add all the podcast files to a single podcast, aka. 'the show', it'll be easier to manage
+#             in iTunes at least.
 # 11 Feb 2023 Do not re-process already processed podcasts, ie. ones called 'WEnn'. 
 # 24 Feb 2019 Fix title set by doFixPodTag
 # 12-Feb-2019 Noticed that WE51 files have Jun dates but WE50 files have Nov dates. I think this
@@ -68,7 +72,7 @@ $LOG->level(SCULog->LOG_INFO);
 my $gDestRootdir = "C:\\temp\\recordings";
 my $itunesxmlpl = "G:\\iTunesUtilities\\iTunes Music Library.xml";
 my $tagfile="";
-
+my $gShowName="ZZ CPA Podcasts";
 my $pathname;
 my %opts =();
 
@@ -170,14 +174,30 @@ foreach my $podcast (@podcasts)
       my $extn = "";
       my $location = decodeutf8url($podcast->location());
       
-      if( $podcast->album() =~ m/^WE\d\d$/ )
+      if( $podcast->album() =~ m/^WE\d\d$/ ) # Old format. Should be obsolete
       {
          $LOG->debug("Ignoring processed podcast: " . $podcast->album() . " Location: " . $location . "\n");
       }
+      elsif( $gShowName eq $podcast->album() ) # New format
+      {
+         $LOG->debug("Ignoring '$gShowName' podcast: " . $podcast->album() . " Location: " . $location . "\n");
+      }  
+      elsif( "Chris' Podcasts" eq $podcast->album() ) # Used for testing, shoul dbe obsolete
+      {
+         $LOG->debug("Ignoring 'Chris' Podcasts' podcast: " . $podcast->album() . " Location: " . $location . "\n");
+      }  
       else
       {
-         $LOG->trace("Downloaded podcast: '" . $podcast->album() . "' Released: " . $podcast->releaseDate() . " Location: " . $location . "\n");
-         processFile($location, $podcast->album(), $gDestRootdir, $podcast->releaseDate());
+         # There should always be a releaseDate - for some reason it disappeared during testing 
+         if( defined($podcast->releaseDate() ) )
+         {
+            $LOG->trace("Downloaded podcast: '" . $podcast->album() . "' Released: " . $podcast->releaseDate() . " Location: " . $location . "\n");
+            processFile($location, $podcast->album(), $gDestRootdir, $podcast->releaseDate());
+         }
+         else
+         {
+            $LOG->debug("No RELEASE Date: Skipping " . $podcast->album() . " Location: " . $location . "\n");
+         }
       }
    }
 }
@@ -281,7 +301,7 @@ my $trackname;
 
    $LOG->info("doFixPodTag: File: $mp3file, Week: $week, TrackID: $trackid, Date: $year-$month-$day\n");
 
-   # Add podcast tags to cpoy
+   # Add podcast tags to copy
 
    doPodcastTags($mp3path, $trackname, $week, $trackid, $year, $month, $day, $hour, $minute);
 
@@ -422,8 +442,8 @@ my $trackname;
    $trackid = sprintf("%02d%02d", $week, $trackid);
 
 
-   # trackname is really the value for TITLE tag
    $renameto = sprintf("%s-%04d%02d%02d_%s", $trackid, $year, $month, $day, $destfilename);
+   # trackname is really the value for TITLE tag. iTunes doesn't seem to like to sort numerically so prefix with alphas
    $trackname = sprintf("%s-%s-%04d%02d%02d", $trackid, $title, $year, $month, $day);
    $wedir = File::Spec->catdir($destrootdir, sprintf("we%02d", $week));
    $renameto = File::Spec->catdir($wedir, $renameto);
@@ -463,7 +483,8 @@ my $trackname;
    doPodcastTags($renameto, $trackname, $week, $trackid, $year, $month, $day, $hour, $minute);
 
    # Set trackno. of all tracks according to sorted order
-   autoTrackNumber($wedir);
+   # Not needed with single 'Show' podcast, all episodes should be track 1
+   # autoTrackNumber($wedir);
 
    return 0;
 }
@@ -668,27 +689,32 @@ my $westr = sprintf("WE%02d", $week);
 
    # Album
    $id3v2->remove_frame("TALB");
-   $id3v2->add_frame("TALB",$westr);
-
+   # $id3v2->add_frame("TALB",$westr);
+   $id3v2->add_frame("TALB", $gShowName);      
+   
    # Composer
    $id3v2->remove_frame("TCOM");
-   $id3v2->add_frame("TCOM",$westr);
+   $id3v2->add_frame("TCOM", $gShowName . " COMP"); # $westr);
 
    # Artist
    $id3v2->remove_frame("TPE1");
-   $id3v2->add_frame("TPE1",$westr);
+   $id3v2->add_frame("TPE1", "Chris"); #$westr);
+   
+   # Album Artist
    $id3v2->remove_frame("TPE2");
-   $id3v2->add_frame("TPE2",$westr);
+   $id3v2->add_frame("TPE2", $gShowName . " ALB ART"); #$westr);
 
-   # Sorting on xxx
-   $id3v2->remove_frame("TSOP");
-   $id3v2->add_frame("TSOP",$westr);
+   # TSOA: Sort As Podcast
    $id3v2->remove_frame("TSOA");
-   $id3v2->add_frame("TSOA",$westr);
+   $id3v2->add_frame("TSOA", $gShowName . " TSOA"); #$westr);
 
+   # TSOP: Sort As Author 
+   $id3v2->remove_frame("TSOP");
+   $id3v2->add_frame("TSOP", "Chris TSOP"); #$westr);
+   
    # Track no.
    $id3v2->remove_frame("TRCK");
-   $id3v2->add_frame("TRCK",$trackid);
+   $id3v2->add_frame("TRCK", "1"); # $trackid);
 
    # Year
    $id3v2->remove_frame("TYER");
@@ -719,7 +745,7 @@ my $westr = sprintf("WE%02d", $week);
    # everything is OK!
    #$id3v2->add_frame("WFED","\x00".$westr);
    $id3v2->remove_frame("WFED");
-   $id3v2->add_frame("WFED","\x00https://".$westr.sprintf("%04d", $year));
+   $id3v2->add_frame("WFED","\x00https://smallcatutilities.ddnsfree.com/zzcpapodcast"); # #".$westr.sprintf("%04d", $year));
 
    # Content type
    $id3v2->remove_frame("TCON");
