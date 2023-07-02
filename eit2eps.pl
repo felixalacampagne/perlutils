@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# 02-Jul-2023 v3_6 handle multiple files on command line.
+#             make arg processing into a function.
 # 17-Dec-2022 v3_5 update version to avoid confusion
 # 17-Nov-2022 convert updateeps to use XML parser
 # 14-Nov-2022 Add NFO functionality
@@ -29,6 +31,9 @@ use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML        
 
+print "EIT2EPS v3.6 20230702\n";
+
+
 # Kludge to provide a command to create the folder artwork for a new program
 # the command should contain placeholders for the program name (#PROGNAME#) and the program directory (#PROGDIR#)
 my $gARTCMDTMPL=$ENV{ARTCMD} . "";
@@ -42,14 +47,13 @@ my $NFOREPOPATH="\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
 my $eitfile;
 
 my $gDefArtwork="";
-my $epsdir = ".";
-my $nfodir = "";
+my $gEpsDir = ".";
+my $gNfoOutDir = "";
 my $logfilename;
-my $nforepopath = $NFOREPOPATH;
+my $gNfoRepoPath = $NFOREPOPATH;
 my %opts;
 getopts('a:d:n:r:l?', \%opts);
 
-print "EIT2EPS v3.5 20221217\n";
 
 if( $opts{"?"} )
 {
@@ -59,23 +63,24 @@ if( $opts{"?"} )
 if( $opts{"d"})
 {
    # This is where the program sub-directories are made
-   $epsdir = $opts{"d"};
+   $gEpsDir = $opts{"d"};
 }
 
 if( $opts{"n"})
 {
    # This is where the NFO is written to
-   $nfodir = $opts{"n"};
+   $gNfoOutDir = $opts{"n"};
 }
 
 if( $opts{"r"})
 {
    # This is where the NFO repository is located
-   $nforepopath = $opts{"r"};
+   $gNfoRepoPath = $opts{"r"};
 }
 
 
-printf "Root programme directory directory: %s\n", $epsdir;
+printf "Root programme  directory: %s\n", $gEpsDir;
+printf "NFO repo directory: %s\n", $gNfoRepoPath;
 
 if( $opts{"l"})
 {
@@ -84,12 +89,11 @@ if( $opts{"l"})
 
 # Avoid confusing the idiot mediaserver by putting the nfo in the final directory 
 # before the video file is moved to there.
-if($nfodir eq "" )
+if($gNfoOutDir eq "" )
 {
-   # This is WRONG! NFO should be written to the programme sub-directory by default
-   $nfodir = $epsdir;
+   $gNfoOutDir = $gEpsDir;
 }
-printf "NFO file directory: %s\n", $nfodir;
+printf "NFO file directory: %s\n", $gNfoOutDir;
 
 
 # Default artwork file will be copied into a newly created program directory to avoid
@@ -99,7 +103,7 @@ printf "NFO file directory: %s\n", $nfodir;
 # unless a file is given on the command line.
 # This is obsolete now that a folder.jpg is generated for each programme sub-directory by the external
 # command.
-$gDefArtwork = File::Spec->catdir($epsdir, "folder.jpg");
+$gDefArtwork = File::Spec->catdir($gEpsDir, "folder.jpg");
 if( $opts{"a"} )
 {
    $gDefArtwork = $opts{"a"};
@@ -109,10 +113,22 @@ if(! -f $gDefArtwork)
 {
   $gDefArtwork = ""; 
 }
+
 foreach my $argv (@ARGV)
 {
-$eitfile = $argv; #$ARGV[0];
+	#$eitfile = $argv; #$ARGV[0];
+	doOneArg($argv, $gEpsDir, $gNfoRepoPath, $gNfoOutDir);
+}
 
+#######################################################
+#######  END OF MAIN  #################################
+#######################################################
+#######################################################
+######   FUNCTIONS    #################################
+#######################################################
+sub doOneArg
+{
+my($eitfile, $epsdir, $nforepopath, $nfodir) = @_;	
 my ($eitfilename,$directories,$suffix) = fileparse( $eitfile );
 my $filename = "";
 my $progname = "";
@@ -122,105 +138,77 @@ my $ep = "";
 my $ext= "";
 my $progdesc = "";
 
-# Extract the intended program info from the filename.
-# Add non-capture group for handling of missing episode title - to be tested
-# Warning: episode numbers more than 4 characters are cutof at the fourth character
-# Should try to find a way of matching all digits to the end, when title is missing,
-# or until the first non-digit/space when title is present.
-if($eitfilename =~m/^((.*?) (\d{1,2})x(\d{2,4})(?: *(.*?)))?(\..+)*$/)
-{
-   $filename = $1;
-   $progname = $2;
-   $season = $3;
-   $id = $4;
-   $ep = $5;
-   $ext = lc $6;  # NB Includes the dot!!
+	# Extract the intended program info from the filename.
+	# Add non-capture group for handling of missing episode title - to be tested
+	# Warning: episode numbers more than 4 characters are cutof at the fourth character
+	# Should try to find a way of matching all digits to the end, when title is missing,
+	# or until the first non-digit/space when title is present.
+	if($eitfilename =~m/^((.*?) (\d{1,2})x(\d{2,4})(?: *(.*?)))?(\..+)*$/)
+	{
+	   $filename = $1;
+	   $progname = $2;
+	   $season = $3;
+	   $id = $4;
+	   $ep = $5;
+	   $ext = lc $6;  # NB Includes the dot!!
+	}
+	else
+	{
+	   die "Invalid filename format: expected 'Program NxN Title.ext' actual: " . $eitfilename;
+	}
+	
+	# yyyymmdd hhmm - channelname - programmeinfo
+	# The raw filename name from the sat box, usually this has already been processed 
+	if($progname =~ m/^\d{8} \d{4} \- .*? \- (.*$)$/) 
+	{
+	   $progname = $1;
+	}
+	
+	# program yy-mm-dd episode title
+	if($progname =~ m/^(.*) \d{2}-\d{2}-\d{2}$/)
+	{
+	   $progname = $1;
+	}
+	
+	
+	if($ext eq ".eit")
+	{
+	   $progdesc = getDescFromEIT($eitfile);
+	} # end if for eit file
+	else
+	{
+	   $progdesc = getDescFromNFORepo($eitfilename, $nforepopath);
+	   if($progdesc eq "")
+	   {
+	      # Should try to find desc from folder.eps
+	      # This uses the episode number so WILL NOT work correctly if there are multiple
+	      # episodes with the same ID, eg. Films.
+	      # Should not be an issue when there is a generated NFO in the repo but could be a problem
+	      # for manually entered items.
+	      $progdesc = getDescFromEPS($epsdir, $progname, $season, $id);
+	      
+	      if($progdesc eq "")
+	      {
+	         # Can't get a description from anywhere else so make a default entry
+	         $progdesc =    $progname . ": ". $ep . "(" . $season . "x" . $id . ")";
+	      }
+	   }
+	}
+	
+	my $episode = "Episode " . $id;
+	if($ep ne "")
+	{
+	   $episode = $ep;
+	}
+	
+	# NB: This initialises the show directory if it doesn't exist, ie. create dir, artwork, tvshow.nfo and folder.eps
+	updateeps($epsdir, $season, $id, $progname, $filename, $episode, $progdesc);
+	
+	printf "Creating NFO for: %s\n", $eitfilename;
+	my $nfofilename = createFileNFO($nfodir, $progname, $eitfilename, $season, $id, $episode, $progdesc);
+		
 }
-else
-{
-   die "Invalid filename format: expected 'Program NxN Title.ext' actual: " . $eitfilename;
-}
 
-# yyyymmdd hhmm - channelname - programmeinfo
-# The raw filename name from the sat box, usually this has already been processed 
-if($progname =~ m/^\d{8} \d{4} \- .*? \- (.*$)$/) 
-{
-   $progname = $1;
-}
-
-# program yy-mm-dd episode title
-if($progname =~ m/^(.*) \d{2}-\d{2}-\d{2}$/)
-{
-   $progname = $1;
-}
-
-
-if($ext eq ".eit")
-{
-   $progdesc = getDescFromEIT($eitfile);
-} # end if for eit file
-else
-{
-   $progdesc = getDescFromNFORepo($eitfilename, $nforepopath);
-   if($progdesc eq "")
-   {
-      # Should try to find desc from folder.eps
-      # This uses the episode number so WILL NOT work correctly if there are multiple
-      # episodes with the same ID, eg. Films.
-      # Should not be an issue when there is a generated NFO in the repo but could be a problem
-      # for manually entered items.
-      $progdesc = getDescFromEPS($epsdir, $progname, $season, $id);
-      
-      if($progdesc eq "")
-      {
-         # Can't get a description from anywhere else so make a default entry
-         $progdesc =    $progname . ": ". $ep . "(" . $season . "x" . $id . ")";
-      }
-   }
-}
-
-
-my $episode = "Episode " . $id;
-if($ep ne "")
-{
-   $episode = $ep;
-}
-
-# There is now a 'repository' of NFO files which should be used when there is no EIT
-# or even in place of the EIT. Use of a repository NFO is the default for createFileNFO.
-# For consistency the EPS files should be updated from the content of the final NFO file
-# ... something for a rainey day!!
-# This is not working as needed at the moment... at least an entry in the folder.eps should be used if nothing else is available
-# TODO: If there is an NFO in the repo then use it for the desc
-#          - update folder.eps with the NFO desc
-#       IF there is no repo NFO then
-#          If there is an EIT desc then use it for the NFO AND update folder.eps
-#          If there is NO EIT desc and folder.eps already contain a match then use the desc from folder.eps for the NFO
-#          If there is NO EIT and NO folder.eps then use default values for folder.eps and NFO
-
-# NB To use the EPS file as XML the season blocks need to be embedded in a higher level block - episodes
-# my $eprec;
-# $eprec = "<episode>" .
-#            "<id>" . $id . "</id>" .
-#            "<filename>" . $filename . "</filename>" .
-#            "<name>" . $episode . "</name>" .
-#            "<description>" . $progdesc . "</description>" .
-#         "</episode>";
-
-# NB: This initialises the show directory if it doesn't exist, ie. create dir, artwork, tvshow.nfo and folder.eps
-updateeps($epsdir, $season, $id, $progname, $filename, $episode, $progdesc);
-
-printf "Creating NFO for: %s\n", $eitfilename;
-my $nfofilename = createFileNFO($nfodir, $progname, $eitfilename, $season, $id, $episode, $progdesc);
-
-} # End foreach command line arg
-
-#######################################################
-#######  END OF MAIN  #################################
-#######################################################
-#######################################################
-######   FUNCTIONS    #################################
-#######################################################
 sub getDescFromEIT
 {
    my($eitfile) = @_;
@@ -656,7 +644,7 @@ my $uid = "9876";
    }
    
    # Check whether NFO file is present in the new NFO repository
-my $nforepopath = File::Spec->catdir($NFOREPOPATH, $nfoname);   
+my $nforepopath = File::Spec->catdir($gNfoRepoPath, $nfoname);   
    if( -s $nforepopath )
    {
       print "NFO file $nfoname is present in the NFO repository: Copying to $nfopath\n";
