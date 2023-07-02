@@ -90,7 +90,7 @@ if($nfodir eq "" )
    $nfodir = $epsdir;
 }
 printf "NFO file directory: %s\n", $nfodir;
-$eitfile = $ARGV[0];
+
 
 # Default artwork file will be copied into a newly created program directory to avoid
 # the appleTV displaying a random scene from one of the episodes. This is more annoying
@@ -109,6 +109,9 @@ if(! -f $gDefArtwork)
 {
   $gDefArtwork = ""; 
 }
+foreach my $argv (@ARGV)
+{
+$eitfile = $argv; #$ARGV[0];
 
 my ($eitfilename,$directories,$suffix) = fileparse( $eitfile );
 my $filename = "";
@@ -210,7 +213,7 @@ updateeps($epsdir, $season, $id, $progname, $filename, $episode, $progdesc);
 printf "Creating NFO for: %s\n", $eitfilename;
 my $nfofilename = createFileNFO($nfodir, $progname, $eitfilename, $season, $id, $episode, $progdesc);
 
-
+} # End foreach command line arg
 
 #######################################################
 #######  END OF MAIN  #################################
@@ -489,7 +492,7 @@ sub getDescFromNFORepo
 {
    my ($vidfilename, $nforepodir) = @_;
    my $nfodesc = "";
-   my $nfoname = $eitfilename;
+   my $nfoname = $vidfilename; # $eitfilename;
    # Replace file extension with .nfo
    $nfoname =~ s/\.[^\.]*$/.nfo/g;
    my $nforepopath = File::Spec->catdir($nforepodir, $nfoname);   
@@ -515,7 +518,7 @@ sub getDescFromNFORepo_Simple
 {
    my ($vidfilename, $nforepodir) = @_;
    my $nfodesc = "";
-   my $nfoname = $eitfilename;
+   my $nfoname = $vidfilename; #$eitfilename;
    # Replace file extension with .nfo
    $nfoname =~ s/\.[^\.]*$/.nfo/g;
    my $nforepopath = File::Spec->catdir($nforepodir, $nfoname);   

@@ -40,7 +40,7 @@ my @H264regexes;
    push(@H264regexes, "BBC .* HD - Killing Eve");
 
    # push(@H264regexes, "BBC Two HD - ");
-   push(@H264regexes, "BBC Three HD - ");
+   # push(@H264regexes, "BBC Three HD - ");
    # push(@H264regexes, "BBC Four HD - ");
    push(@H264regexes, "ITV HD - ");
    push(@H264regexes, "Channel 4 HD - ");
