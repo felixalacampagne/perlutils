@@ -38,7 +38,7 @@ print "EIT2EPS v3.6 20230702\n";
 # the command should contain placeholders for the program name (#PROGNAME#) and the program directory (#PROGDIR#)
 my $gARTCMDTMPL=$ENV{ARTCMD} . "";
 
-# This is the default value, it can be overridden by a command lien option
+# This is the default value, it can be overridden from the command line
 my $NFOREPOPATH="\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
 
 # script is intended for use with filename which have the date/channel info removed

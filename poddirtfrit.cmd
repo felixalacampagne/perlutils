@@ -5,7 +5,9 @@ if "%PERLUTLDIR%" == "" set PERLUTLDIR=%UTLDIR%\perlutils
 
 set SCUDIR=C:\Development\utils
 set ITLIB=C:\Development\Music\iTunes\iTunes Library.xml
-set DESTDIR=N:\Recordings_iT_M
+
+rem set DESTDIR=N:\Recordings_iT_M
+set DESTDIR=K:\podcasts
 
 PATH=%SCUDIR%;%PATH%
 set logfile=%USERPROFILE%\desktop\logs\poddirtfrit.log
