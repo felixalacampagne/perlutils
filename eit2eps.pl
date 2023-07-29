@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# 29-Jul-2023 v3_7 option to process current directory using .eit files if present 
+#             otherwise as for single video files.
 # 02-Jul-2023 v3_6 handle multiple files on command line.
 #             make arg processing into a function.
 # 17-Dec-2022 v3_5 update version to avoid confusion
@@ -31,7 +33,7 @@ use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML        
 
-print "EIT2EPS v3.6 20230702\n";
+print "EIT2EPS v3.7 20230729\n";
 
 
 # Kludge to provide a command to create the folder artwork for a new program
@@ -44,15 +46,19 @@ my $NFOREPOPATH="\\\\NAS\\public\\Videos\\mp4\\ZZnforepo"; # "\\\\MINNIE\\Develo
 # script is intended for use with filename which have the date/channel info removed
 # this is to allow the EPS line to be accumulated into a .eps file with the name
 # of the programme.
-my $eitfile;
 
+# Variables intended to be globally accessible
 my $gDefArtwork="";
 my $gEpsDir = ".";
 my $gNfoOutDir = "";
-my $logfilename;
+#my $logfilename;
 my $gNfoRepoPath = $NFOREPOPATH;
+
+# Variables only for use by 'main'
+my $eitfile;
+my @filelist;
 my %opts;
-getopts('a:d:n:r:l?', \%opts);
+getopts('ai:d:n:r:l?', \%opts);
 
 
 if( $opts{"?"} )
@@ -104,9 +110,9 @@ printf "NFO file directory: %s\n", $gNfoOutDir;
 # This is obsolete now that a folder.jpg is generated for each programme sub-directory by the external
 # command.
 $gDefArtwork = File::Spec->catdir($gEpsDir, "folder.jpg");
-if( $opts{"a"} )
+if( $opts{"i"} )
 {
-   $gDefArtwork = $opts{"a"};
+   $gDefArtwork = $opts{"i"};
 }
 
 if(! -f $gDefArtwork)
@@ -114,10 +120,46 @@ if(! -f $gDefArtwork)
   $gDefArtwork = ""; 
 }
 
-foreach my $argv (@ARGV)
+if( $opts{"a"} ) 
+{
+	# TODO: should be a function call but need to (re) figure out how to return
+	# a list (array, hash, whatever the fork it's called in Perl) or
+	# pass the list to be filled to the function...
+	my $dh;
+	my $curdir = File::Spec->curdir();
+	$curdir = File::Spec->rel2abs(File::Spec->curdir());
+	printf "Processing video files in %s\n", $curdir;
+	
+	opendir $dh, $curdir or die "Couldn't open dir '$curdir': $!";
+	my @files = grep { !/^\.\.?$/ } readdir $dh;
+	closedir $dh;
+	
+	foreach my $file (@files)
+	{
+		my $fullfile = File::Spec->catdir($curdir,$file);
+		if( $fullfile =~ m/.*\.(m4v|ts|mkv)$/i )
+		{
+			my $eitfile = $fullfile;
+			$eitfile =~ s/\.[^\.]*$/.eit/g;
+			if( -f $eitfile)
+			{
+				$fullfile = $eitfile;
+			}
+			printf "Adding: %s\n", basename($fullfile);
+			push(@filelist, $fullfile);
+		}
+	}   	
+}  	
+else
+{
+	@filelist = @ARGV;	
+}
+
+foreach my $file (@filelist)
 {
 	#$eitfile = $argv; #$ARGV[0];
-	doOneArg($argv, $gEpsDir, $gNfoRepoPath, $gNfoOutDir);
+	printf "Processing: %s\n", basename($file);
+	doOneArg($file, $gEpsDir, $gNfoRepoPath, $gNfoOutDir);
 }
 
 #######################################################
@@ -639,7 +681,7 @@ my $uid = "9876";
    $nfopath = File::Spec->catdir($nfopath, $nfoname);
    if( -s $nfopath )
    {
-      print "NFO file $nfopath already exists and will not be overwritten";
+      print "NFO file $nfopath already exists and will not be overwritten\n";
       return $nfopath;
    }
    
