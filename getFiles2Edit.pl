@@ -6,6 +6,9 @@
 # matching files. Could possibly use "FINDSTR" but not without a lot
 # of trickery. So perl it is...
 
+# 29 Jul 2023 Acutally use the generated unique file name to avoid overwriting 
+# existing destination files with the same name. Use a temporary filename while
+# the move is ongoing to make it easier to spot which files are not yet complete.
 # 09 Dec 2016 Move matching .eit files aswell. They are useful for prog info
 # especially if I end up watching the .ts files without converting to .m4v
 # as is the case with popular series, eg. Game Of Thrones
@@ -27,8 +30,13 @@ use Encode;
 use Getopt::Std;
 use Term::ReadKey;
 use FALC::SCULog;
+use Win32::Console;
+my $VERSION="GETFILES2EDIT v1.1 20230729";
+
 
 my $LOG = FALC::SCULog->new();
+my $CONSOLE=Win32::Console->new;
+my $CONSOLESTARTTILE=$CONSOLE->Title();
 
    # For HD H264 recordings (VU+) for SmartCut editing
 my @H264regexes;
@@ -42,7 +50,9 @@ my @H264regexes;
    # push(@H264regexes, "BBC Three HD - ");
    # push(@H264regexes, "BBC Four HD - ");
    push(@H264regexes, "ITV HD - ");
-   # push(@H264regexes, "Channel 4 HD - ");
+   push(@H264regexes, "Channel 5 HD - Yellowstone");
+   push(@H264regexes, "BBC One Lon HD - The Sixth Commandment");
+   
    
    
    # Non-HD H264 channels (VU+) for SmartCut editing
@@ -142,6 +152,8 @@ if ( $logtofile == 1 )
    $|=1;
 }
 
+$LOG->info($VERSION . "\n");
+
 # This bit of perl black magic is supposed to make stdout flush 
 # each line even when redirected to a file, but it doesn't seem to work inside
 # the logtofile if block and it doesn't seem to work here either when logfh is selected.
@@ -149,6 +161,8 @@ if ( $logtofile == 1 )
 $|=1;
 
 processDir($srcdir, $dstdir);
+
+settitle(""); # reset to original - we might be called again so should not leave anything in the title
 
 if ( defined $logfh )
 {
@@ -241,6 +255,7 @@ my $ts;
 
 sub processDir
 {
+my $ME="processDir: "; # function name for log output
 my ($origdir, $destdir) = @_;
 my @tsfiles;
 my $destpath;
@@ -255,7 +270,7 @@ my $fullregex;
    #   - Move matching files (using DOS command?) to dest.
 
    @tsfiles = getTSFiles($origdir);
-   $LOG->info("Count .TS files found in '$origdir': " . @tsfiles . "\n");
+   $LOG->info($ME . "Count .TS files found in '$origdir': " . @tsfiles . "\n");
    foreach my $tsfullfile (@tsfiles)
    {
       ($tsfilename,$dirs,$suffix) = fileparse( $tsfullfile );
@@ -267,46 +282,54 @@ my $fullregex;
             # As always with Perl cannot simply create a function which returns a boolean value
             # as there is no boolean type and returning 0 and 1 for some ridiculous Perl reason
             # are not always interpreted as false and true in conditions.
-            $LOG->info("File '$tsfilename' matches '$regex'\n");
+            $LOG->info($ME . "File '$tsfilename' matches '$regex'\n");
             if(isFileInUse( $tsfullfile) == 0)
             {
                $destpath = getUniqueDestName($destdir, $tsfilename);
-               $LOG->info("Moving '$tsfilename' to $destdir.\n");
-               move($tsfullfile, $destdir);
+               $LOG->info($ME . "Moving '$tsfilename' to $destpath.\n");
+               settitle("Moving: $tsfilename");
+               
+               # Use a temp filename while move is progress as it can take a while and don't
+               # want the file to be picked up by other utilities. eit move does not need temp
+               # file since it is msall and moved quickly
+               my $inprogname = $destpath . ".f2emvinprog";
+               move($tsfullfile, $inprogname);
+               move($inprogname, $destpath);
                
                # Cannot passively handle .eit when it is found as a separate file as it should only be moved if
                # the related .ts file is moved
                (my $eitfullfile = $tsfullfile) =~ s/\.ts$/.eit/;
-               $LOG->info("Checking for '$eitfullfile'.\n");
+               $LOG->info($ME . "Checking for '$eitfullfile'.\n");
                if( -f $eitfullfile )
                {
                   my $eitfile;
                   ($eitfile,$dirs,$suffix) = fileparse( $eitfullfile );
                   $destpath = getUniqueDestName($destdir, $eitfile);
-                  $LOG->info("Moving '$eitfullfile' to $destpath.\n");
+                  $LOG->info($ME . "Moving '$eitfullfile' to $destpath.\n");
                   move($eitfullfile, $destpath);
                }
                else
                {
-                  $LOG->info("No eit file found for  '$tsfullfile'.\n");
+                  $LOG->info($ME . "No eit file found for  '$tsfullfile'.\n");
                }
             }
             else
             {
-               $LOG->info("'$tsfilename' appears to be in use and will not be moved\n");
+               $LOG->info($ME . "'$tsfilename' appears to be in use and will not be moved\n");
             }
             
             last; #This means break!
          }
          else
          {
-            $LOG->debug("File '$tsfilename' does NOT match '$regex'.\n");
+            $LOG->debug($ME . "File '$tsfilename' does NOT match '$regex'.\n");
          }
       }
    }
 }
 sub isFileInUse
 {
+	my $ME="isFileInUse: ";
 my ($pathname) = @_;
 my $bInUse = 0;
 my $size1;
@@ -324,17 +347,17 @@ my $stat;
    
       if($size1 != $size2)
       {
-         $LOG->info("isFileInUse: '$pathname' size changed from $size1 to $size2, assuming file IS in use\n");
+         $LOG->info($ME . "isFileInUse: '$pathname' size changed from $size1 to $size2, assuming file IS in use\n");
          $bInUse = 1;
       }
       else
       {
-         $LOG->debug("isFileInUse: '$pathname' size remained constant at $size1, assuming file NOT in use\n");
+         $LOG->debug($ME . "isFileInUse: '$pathname' size remained constant at $size1, assuming file NOT in use\n");
       }
    }
    else
    {
-      $LOG->info("isFileInUse: '$pathname' is NOT a file!!!! Returning true\n");
+      $LOG->info($ME . "isFileInUse: '$pathname' is NOT a file!!!! Returning true\n");
       $bInUse = 1;
    }
    return $bInUse;
@@ -356,4 +379,15 @@ my $line = "";
    }
    close($fh);
 
+}
+
+sub settitle
+{
+my $title = shift;
+	# Must keep original title at start as it is required to prevent sleep
+	if($title ne "")
+	{
+		$title =': ' . $title;
+	}
+	$CONSOLE->Title($CONSOLESTARTTILE . $title);
 }
