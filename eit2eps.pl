@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+# 13-Aug-2023 v3_8 always write new nfo/eps with sanitized description. nfo in repo is not modified.
 # 29-Jul-2023 v3_7 option to process current directory using .eit files if present 
 #             otherwise as for single video files.
 # 02-Jul-2023 v3_6 handle multiple files on command line.
@@ -33,7 +34,7 @@ use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML        
 
-print "EIT2EPS v3.7 20230729\n";
+print "EIT2EPS v3.8 20230813\n";
 
 
 # Kludge to provide a command to create the folder artwork for a new program
@@ -236,6 +237,8 @@ my $progdesc = "";
 	      }
 	   }
 	}
+
+	$progdesc = sanitize($progdesc);
 	
 	my $episode = "Episode " . $id;
 	if($ep ne "")
@@ -249,6 +252,35 @@ my $progdesc = "";
 	printf "Creating NFO for: %s\n", $eitfilename;
 	my $nfofilename = createFileNFO($nfodir, $progname, $eitfilename, $season, $id, $episode, $progdesc);
 		
+}
+
+sub sanitize
+{
+my ($str) = @_;
+
+	# Aaaaaaggggggghhhhhhh The replacements don't work with the 'actual' character
+	# as the search pattern. Must figure out the unicode value and use the hexadecimal value
+	# This can sort of be done using the actual character at https://onlineutf8tools.com/convert-utf8-to-code-points
+	# Would be nicer to be able to enter the utf-8 values to be sure the result is valid
+	# but for some reason the most obvious entry method has been omitted.
+  $str =~ s/‘/'/g; # Left single quote
+	$str =~ s/\x{2019}/'/g; # s/’/'/g; # Right single quote: 'E2 80 99' often used as an apostrophe
+  $str =~ s/“/"/g; # Left double quote
+  $str =~ s/”/"/g; # Right double quote
+	$str =~ s/\x{2013}/-/g; #    s/–/-/g; # Long hyphen 'E2 80 93'
+	#$str =~ s/[^\x00-\x7F]+//g; # Remove other non-Ascii
+	$str = trim($str);
+	printf "sanitize:\n%s\n", $str;
+	return $str;
+}
+
+sub trim
+{
+my ($str) = @_;
+
+$str =~ s/^\s+//;
+$str =~ s/\s+$//;
+return $str;
 }
 
 sub getDescFromEIT
@@ -686,13 +718,18 @@ my $uid = "9876";
    }
    
    # Check whether NFO file is present in the new NFO repository
-my $nforepopath = File::Spec->catdir($gNfoRepoPath, $nfoname);   
-   if( -s $nforepopath )
-   {
-      print "NFO file $nfoname is present in the NFO repository: Copying to $nfopath\n";
-      copy($nforepopath, $nfopath);
-      return $nfopath;
-   }
+   # Actually this is not such a good idea: the content of the nfo repo file is
+   # read earlier and any 'bad' characters filtered out so the in-memory should
+   # always be written as the final version.
+   # TODO ensure createFileNFO is always called with the desired nfo content, ie. any nfo repo
+   # content is always loaded before calling createFileNFO.
+	 #my $nforepopath = File::Spec->catdir($gNfoRepoPath, $nfoname);   
+   #if( -s $nforepopath )
+   #{
+   #   print "NFO file $nfoname is present in the NFO repository: Copying to $nfopath\n";
+   #   copy($nforepopath, $nfopath);
+   #   return $nfopath;
+   #}
       
    print "createFileNFO: creating nfo file: " . $nfopath . " for " . $vidfilename . "\n";
    my $nfocont = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n";
