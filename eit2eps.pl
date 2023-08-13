@@ -33,8 +33,8 @@ use Digest::MD5;
 use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML        
-
-print "EIT2EPS v3.8 20230813\n";
+use open ":std", ":encoding(UTF-8)"; # Tell Perl UTF-8 is being used.
+print "EIT2EPS v3.8 20230813b\n";
 
 
 # Kludge to provide a command to create the folder artwork for a new program
@@ -260,14 +260,14 @@ my ($str) = @_;
 
 	# Aaaaaaggggggghhhhhhh The replacements don't work with the 'actual' character
 	# as the search pattern. Must figure out the unicode value and use the hexadecimal value
-	# This can sort of be done using the actual character at https://onlineutf8tools.com/convert-utf8-to-code-points
-	# Would be nicer to be able to enter the utf-8 values to be sure the result is valid
-	# but for some reason the most obvious entry method has been omitted.
-  $str =~ s/‘/'/g; # Left single quote
-	$str =~ s/\x{2019}/'/g; # s/’/'/g; # Right single quote: 'E2 80 99' often used as an apostrophe
-  $str =~ s/“/"/g; # Left double quote
-  $str =~ s/”/"/g; # Right double quote
-	$str =~ s/\x{2013}/-/g; #    s/–/-/g; # Long hyphen 'E2 80 93'
+	# This can be done at https://www.cogsci.ed.ac.uk/~richard/utf-8.cgi?input=E2+80+99&mode=bytes
+  # Might have been able to avoid needing to do this with 'use utf8' or 'use open ":std", ":encoding(UTF-8)"'
+  $str =~ s/\x{2018}/'/g; # E2 80 98 Left single quote ‘
+	$str =~ s/\x{2019}/'/g; # E2 80 99 Right single quote often used as an apostrophe
+  $str =~ s/\x{201C}/"/g; # E2 80 9C Left double quote “
+  $str =~ s/\x{201D}/"/g; # E2 80 9D Right double quote ”
+	$str =~ s/\x{2013}/-/g; # E2 80 93 Long hyphen
+	# This may be necessary but for now try to keep accented characters etc.
 	#$str =~ s/[^\x00-\x7F]+//g; # Remove other non-Ascii
 	$str = trim($str);
 	printf "sanitize:\n%s\n", $str;
@@ -569,7 +569,7 @@ sub getDescFromNFORepo
       {
          $nfodesc = $descnodes->get_node(0)->getValue();
          $nfodesc =~ s/^\s+|\s+$//g ;
-         print "Description from $nforepopath: $nfodesc\n";
+         print "Description from $nforepopath:\n$nfodesc\n";
       }
    }
    return $nfodesc;
