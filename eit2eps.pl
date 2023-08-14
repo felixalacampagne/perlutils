@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+# 13-Aug-2023 v3_8 always write new nfo/eps with sanitized description. nfo in repo is not modified.
 # 29-Jul-2023 v3_7 option to process current directory using .eit files if present 
 #             otherwise as for single video files.
 # 02-Jul-2023 v3_6 handle multiple files on command line.
@@ -32,8 +33,8 @@ use Digest::MD5;
 use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML        
-
-print "EIT2EPS v3.7 20230729\n";
+use open ":std", ":encoding(UTF-8)"; # Tell Perl UTF-8 is being used.
+print "EIT2EPS v3.8 20230813b\n";
 
 
 # Kludge to provide a command to create the folder artwork for a new program
@@ -236,6 +237,8 @@ my $progdesc = "";
 	      }
 	   }
 	}
+
+	$progdesc = sanitize($progdesc);
 	
 	my $episode = "Episode " . $id;
 	if($ep ne "")
@@ -249,6 +252,35 @@ my $progdesc = "";
 	printf "Creating NFO for: %s\n", $eitfilename;
 	my $nfofilename = createFileNFO($nfodir, $progname, $eitfilename, $season, $id, $episode, $progdesc);
 		
+}
+
+sub sanitize
+{
+my ($str) = @_;
+
+	# Aaaaaaggggggghhhhhhh The replacements don't work with the 'actual' character
+	# as the search pattern. Must figure out the unicode value and use the hexadecimal value
+	# This can be done at https://www.cogsci.ed.ac.uk/~richard/utf-8.cgi?input=E2+80+99&mode=bytes
+  # Might have been able to avoid needing to do this with 'use utf8' or 'use open ":std", ":encoding(UTF-8)"'
+  $str =~ s/\x{2018}/'/g; # E2 80 98 Left single quote ‘
+	$str =~ s/\x{2019}/'/g; # E2 80 99 Right single quote often used as an apostrophe
+  $str =~ s/\x{201C}/"/g; # E2 80 9C Left double quote “
+  $str =~ s/\x{201D}/"/g; # E2 80 9D Right double quote ”
+	$str =~ s/\x{2013}/-/g; # E2 80 93 Long hyphen
+	# This may be necessary but for now try to keep accented characters etc.
+	#$str =~ s/[^\x00-\x7F]+//g; # Remove other non-Ascii
+	$str = trim($str);
+	printf "sanitize:\n%s\n", $str;
+	return $str;
+}
+
+sub trim
+{
+my ($str) = @_;
+
+$str =~ s/^\s+//;
+$str =~ s/\s+$//;
+return $str;
 }
 
 sub getDescFromEIT
@@ -537,7 +569,7 @@ sub getDescFromNFORepo
       {
          $nfodesc = $descnodes->get_node(0)->getValue();
          $nfodesc =~ s/^\s+|\s+$//g ;
-         print "Description from $nforepopath: $nfodesc\n";
+         print "Description from $nforepopath:\n$nfodesc\n";
       }
    }
    return $nfodesc;
@@ -686,13 +718,18 @@ my $uid = "9876";
    }
    
    # Check whether NFO file is present in the new NFO repository
-my $nforepopath = File::Spec->catdir($gNfoRepoPath, $nfoname);   
-   if( -s $nforepopath )
-   {
-      print "NFO file $nfoname is present in the NFO repository: Copying to $nfopath\n";
-      copy($nforepopath, $nfopath);
-      return $nfopath;
-   }
+   # Actually this is not such a good idea: the content of the nfo repo file is
+   # read earlier and any 'bad' characters filtered out so the in-memory should
+   # always be written as the final version.
+   # TODO ensure createFileNFO is always called with the desired nfo content, ie. any nfo repo
+   # content is always loaded before calling createFileNFO.
+	 #my $nforepopath = File::Spec->catdir($gNfoRepoPath, $nfoname);   
+   #if( -s $nforepopath )
+   #{
+   #   print "NFO file $nfoname is present in the NFO repository: Copying to $nfopath\n";
+   #   copy($nforepopath, $nfopath);
+   #   return $nfopath;
+   #}
       
    print "createFileNFO: creating nfo file: " . $nfopath . " for " . $vidfilename . "\n";
    my $nfocont = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n";
