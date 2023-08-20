@@ -6,7 +6,6 @@
 #             Added sleep preventer
 # 30 Jun 2018 Log goes to destination as this fits better with how I use it. 
 # XX Jun 2018 based on foldermd5
-
 # This is the real test - the change to main was a mistake because I cannot get used
 # to not being put in the branch when I create new one... bloody unix tools
 use strict;
