@@ -59,7 +59,7 @@ use utf8;
 use Getopt::Std;
 use XML::Simple;
 use Data::Dumper;
-use Mac::iTunes::Library::XML; # From http://search.cpan.org/~dinomite/Mac-iTunes-Library-1.0/
+use Mac::iTunes::Library::XML; # cpanm Mac::iTunes::Library From http://search.cpan.org/~dinomite/Mac-iTunes-Library-1.0/
 use Mac::iTunes::Library::Playlist;
 # APESTRIP imports
 use Fcntl qw[:seek];
