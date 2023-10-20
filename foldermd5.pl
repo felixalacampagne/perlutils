@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+# 20 Oct 2023 Added mkv to monitor status of the BD backups as they are quite difficult to make
 # 06 May 2022 Improve installation procedure. Version info. (No constant LOG or CONSOLE)
 # 09 Feb 2022 Uses shared logging module. Can configure Windows registry with current script location
 # 26 Apr 2019 Update the console title with name of directory being processed. Handy when the
@@ -29,7 +30,7 @@ use Win32::DriveInfo;  # Not installed by default: cpanm Win32::DriveInfo
 use Win32::Console; 
 use FALC::SCULog;
 
-use constant { VERSION => "23.03.06" };
+use constant { VERSION => "23.10.20" };
 my $LOG = FALC::SCULog->new();
 
 my $CONSOLE=Win32::Console->new;
@@ -369,7 +370,7 @@ my $foldermd5path = File::Spec->catdir($directories, "folder.md5");
 sub isFileForMD5
 {
 my ($file) = @_;
-   if( $file =~ m/.*\.(mp3|m4a|m4v|mp4|flac|raw|wav)$/i )
+   if( $file =~ m/.*\.(mp3|m4a|m4v|mp4|flac|raw|wav|mkv)$/i )
    {
       return (0==0); # No built-in true or false!!!!
    }
