@@ -87,7 +87,7 @@ if($destdir eq "")
 
 $srcdir = File::Spec->rel2abs($srcdir);
 $destdir = File::Spec->rel2abs($destdir);
-
+print "srcdir: $srcdir destdir: $destdir\n";
    
 if ( $logtofile == 1 )
 {
