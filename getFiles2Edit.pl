@@ -56,8 +56,9 @@ my @H264regexes;
    
    
    # Non-HD H264 channels (VU+) for SmartCut editing
-   push(@H264regexes, "Play5 - ");
+   push(@H264regexes, "Play5 - Greys Anatomy"); # Leave Graham Norton on ultimo
    push(@H264regexes, "VTM 3 - ");
+   push(@H264regexes, "VTM 4 - MASH");
    push(@H264regexes, "Play6 - ");
 
    # SD, ie. MPEG, recordings (VU+) for Cuttermaran editing

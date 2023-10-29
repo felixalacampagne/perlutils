@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# 28 Oct 2023 Rename log to indicate fails (for the weekly automated check of NAS)
+# 20 Oct 2023 Added mkv to monitor status of the BD backups as they are quite difficult to make
 # 06 May 2022 Improve installation procedure. Version info. (No constant LOG or CONSOLE)
 # 09 Feb 2022 Uses shared logging module. Can configure Windows registry with current script location
 # 26 Apr 2019 Update the console title with name of directory being processed. Handy when the
@@ -17,6 +19,7 @@ use Data::Dumper;
 use Digest::MD5;
 use File::Spec;
 use File::Basename;
+use File::Copy;
 use File::Temp qw/ tempfile tempdir /;
 use Date::Calc qw(Today_and_Now Delta_DHMS); # Not installed by default: cpanm Date::Calc
 use Cwd;
@@ -29,7 +32,7 @@ use Win32::DriveInfo;  # Not installed by default: cpanm Win32::DriveInfo
 use Win32::Console; 
 use FALC::SCULog;
 
-use constant { VERSION => "23.03.06" };
+use constant { VERSION => "23.10.28" };
 my $LOG = FALC::SCULog->new();
 
 my $CONSOLE=Win32::Console->new;
@@ -175,6 +178,7 @@ do
          $key = filename2key($filename);
          $path = $directories;
       }
+
       $logname = "md5_" . $ts . "_" . $key . ".log";
       $logfilename = File::Spec->catdir($path, $logname);         
       
@@ -276,6 +280,15 @@ do
       close($logfh);
    }
    select STDOUT;
+   
+   if((LogToFile() > 0) && (getTotfailmd5dir() > 0))
+   {   
+      my $failname = $logfilename;
+      $failname =~ s/^(.*)(\.log)$/$1_FAIL$2/;
+      move($logfilename, $failname);
+      $logfilename = $failname; # for pauseonexit
+   } 
+    
    $startdir = "";
    shift(@ARGV); #Removes first element
    if( @ARGV > 0)
@@ -289,6 +302,8 @@ do
 # while waiting for input.
 setpowersaving(1);
 
+# NB This is not valid when multiple directories are specified on the command line as each
+# directory gets its own logfile but it is still handy for execution from a right-click on a folder
 if(PauseOnExit() == 1)
 {
    if( LogToFile() == 1 )
@@ -369,7 +384,7 @@ my $foldermd5path = File::Spec->catdir($directories, "folder.md5");
 sub isFileForMD5
 {
 my ($file) = @_;
-   if( $file =~ m/.*\.(mp3|m4a|m4v|mp4|flac|raw|wav)$/i )
+   if( $file =~ m/.*\.(mp3|m4a|m4v|mp4|flac|raw|wav|mkv)$/i )
    {
       return (0==0); # No built-in true or false!!!!
    }

@@ -1,21 +1,13 @@
 #!/usr/bin/perl
+# 15 Aug 2023 option to exclude source directories from the sync using a regex pattern. The pattern
+#             is applied to the simple directory name not the full path.
 # 27 Apr 2019 Update console window title with currently processing directory
 # 23 Feb 2019 Try to keep file/dir times of destination same as source
 #             Added sleep preventer
 # 30 Jun 2018 Log goes to destination as this fits better with how I use it. 
-# 20 May 2014 Improved argument handling by using getopts and added support for multiple
-#             directories on the command line (possible thanks to getopts removing the args
-#             it receognises from the arg list. Each directory is handled independantly, including
-#             logging - so each dir gets it's own log.
-# 19 May 2014 Support for double-click of folder.md5 file. Also handle missing folder.md5
-#             on read-only media - try to create file before performing the calculation.
-# 11 May 2014 Sort files and dirs to make checking the lists easier (and it looks better)
-#             Flush output so progress can be better viewed when logging to file.
-#             Added -l parameter to automatically log to a timestamped md5_ log file in the
-#             start directory
-# 27 Jan 2014 Does not rely on curdir, chdir, etc. 
-# (does rely on File::Spec->catdir alot though)
-
+# XX Jun 2018 based on foldermd5
+# This is the real test - the change to main was a mistake because I cannot get used
+# to not being put in the branch when I create new one... bloody unix tools
 use strict;
 use IO::Handle;
 use Data::Dumper;
@@ -30,6 +22,9 @@ use Getopt::Std;
 use Term::ReadKey;
 use Win32::API;
 use Win32::Console; 
+my $VERSION="syncMD5 v1.4";
+print "$VERSION 20230815\n";
+
 my $CONSOLE=Win32::Console->new;
 # Must be positioned at the start of the script before the get/inc funcs are used otherwise
 # the hash is not initialised even though there is no syntax error for the
@@ -45,7 +40,11 @@ my $logfh;
 my $logfilename;
 my %opts;
 
-getopts('ckvlp?', \%opts);
+# I think this will be a regex 'list' pattern, eg. "playlists|ringtones|voicememos" which
+# might cause a problem with the command line though but hopefully quoting the argument will
+# work
+my $excldirs = ""; # Directories to exclude.
+getopts('x:ckvlp?', \%opts);
 
 if( $opts{"?"} == 1 )
 {
@@ -65,11 +64,19 @@ if( $opts{"p"} == 1)
    $pauseonexit = 1;
 }
 
+if( $opts{"x"})
+{
+   $excldirs = $opts{"x"};
+}
+
 
 # The options are removed from argv which leaves just the directory.
 # This makes it possible to specify multiple directories on the command line
 # which would be handy for specifying mp3, flac and alac in one script.
-# Need to decide if the log files should go in each directory...
+# Destdir woul dneed to be specified with an option, and all source root dirs would
+# need to be sub-dirs of the destdir, log file should go in root destdir... not really
+# required in practice since the format type directories are sub-dirs in both 
+# source and dest dirs.
 
 $srcdir = $ARGV[0];
 shift(@ARGV); #Removes first element
@@ -114,8 +121,11 @@ if ( $logtofile == 1 )
 $|=1;
 
 print "Syncing directory: $srcdir with $destdir\n";
-
-syncDir($srcdir, $destdir);
+if(length $excldirs > 0) 
+{
+   print "Excluding directories matching pattern '$excldirs'\n";
+}
+syncDir($srcdir, $destdir, $excldirs);
 settitle("Done!");
 print "Total directories:          " . getTotdirs() . "\n";
 print "Total files:                " . getTotfiles() . "\n";
@@ -161,7 +171,7 @@ sub HELP_MESSAGE()
 
 sub syncDir
 {
-my ($srcroot, $destroot) = @_;
+my ($srcroot, $destroot, $excldirpat) = @_;
 my @subdirs;
 my @files;
 my @dircontent;   
@@ -190,9 +200,16 @@ my %destmd5s;
       $fullfile = File::Spec->catdir($srcroot,$file);
       if( -d $fullfile )
       {
-         # Add to subdir
-         # print "Found directory: $file\n";
-         push(@subdirs, $file);
+         # NB. empty pattern matches everything so excludes all!
+         if((length $excldirpat == 0) || ($file !~ m/$excldirpat/) )
+         {
+            # Add to subdir
+            push(@subdirs, $file);
+         }
+         else
+         {
+            print "Excluding directory: $fullfile\n";
+         }
       }
       elsif(! ($file =~ m/.*\.(ini|db|log|bak|dat)$/i) )
       {
@@ -228,7 +245,7 @@ my %destmd5s;
    my @srtsubdirs = sort @subdirs;
    foreach my $subdir (@srtsubdirs) 
    {
-      syncDir(File::Spec->catdir($srcroot,$subdir), File::Spec->catdir($destroot,$subdir));
+      syncDir(File::Spec->catdir($srcroot,$subdir), File::Spec->catdir($destroot,$subdir), $excldirpat);
    }
 
    # Try to make the modification time of the dest directory match the time of the source
@@ -575,7 +592,7 @@ return $str;
 sub settitle
 {
 my $title = shift;
-$CONSOLE->Title('syncMD5: ' . $title);
+$CONSOLE->Title($VERSION. ": " . $title);
 }
 
 

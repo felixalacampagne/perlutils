@@ -19,9 +19,9 @@ use 5.010;
 use strict;
 use XML::Simple;
 use Data::Dumper;
-use Mac::iTunes::Library::XML; # ppm install Mac-iTunes-Library From http://search.cpan.org/~dinomite/Mac-iTunes-Library-1.0/
+use Mac::iTunes::Library::XML; # cpanm Mac::iTunes::Library From http://search.cpan.org/~dinomite/Mac-iTunes-Library-1.0/
 use Mac::iTunes::Library::Playlist;
-use Win32::DriveInfo;  # Not installed by default: ppm install Win32-DriveInfo
+use Win32::DriveInfo;  # Not installed by default: cpanm Win32::DriveInfo
 use File::Basename;
 use File::Spec;
 use File::Copy;
