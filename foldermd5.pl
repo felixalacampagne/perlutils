@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+# 31 Oct 2023 remove spurious quotes from command line directory/drive name
 # 28 Oct 2023 Rename log to indicate fails (for the weekly automated check of NAS)
 # 20 Oct 2023 Added mkv to monitor status of the BD backups as they are quite difficult to make
 # 06 May 2022 Improve installation procedure. Version info. (No constant LOG or CONSOLE)
@@ -32,7 +33,7 @@ use Win32::DriveInfo;  # Not installed by default: cpanm Win32::DriveInfo
 use Win32::Console; 
 use FALC::SCULog;
 
-use constant { VERSION => "23.10.28" };
+use constant { VERSION => "23.10.31" };
 my $LOG = FALC::SCULog->new();
 
 my $CONSOLE=Win32::Console->new;
@@ -117,6 +118,13 @@ if( defined $opts{"i"})
 if( @ARGV > 0)
 {
    $startdir = $ARGV[0];
+   
+   # context menu start for DVD/BD drive gives error 'F:\"' (note trailing quote) even
+   # though the registry entry is correctly quoted and backslash is not a windows command line
+   # escape character. Could modify the registry entries but think it safer to just remove
+   # any quotes from the string, since they are not valid filename characters, before
+   # starting processing.
+   $startdir =~ s/\"//g;
    #
 }
 
