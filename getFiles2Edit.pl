@@ -75,7 +75,7 @@ loadConfig($file);
 my @gRegexes = @H264regexes;
 if( $opts{"v"} == 1)
 {
-   $LOG->level(SCULog->LOG_DEBUG);
+   $LOG->level(FALC::SCULog->LOG_DEBUG);
 }
 if( $opts{"l"} == 1)
 {
@@ -101,7 +101,8 @@ elsif( $opts{"a"} == 1)
    @gRegexes = @allregex;
 }
 
-# print Dumper @gRegexes;
+my $dbg = Dumper @gRegexes;
+$LOG->debug("gRegexes contains:\n". $dbg . "\n");
 
 
 
@@ -319,6 +320,7 @@ my $fullregex;
       }
    }
 }
+
 sub isFileInUse
 {
 	my $ME="isFileInUse: ";
@@ -462,7 +464,7 @@ my $json = loadtext($file);
 my $mapref = decode_json($json);
 my %config = %{$mapref};
 
-   @H264regexes = $config{'H264regexes'};
-   @MP2regexes = $config{'MP2regexes'};
-   @allregex = $config{'allregex'};
+   @H264regexes = @{$config{'H264regexes'}};
+   @MP2regexes = @{$config{'MP2regexes'}};
+   @allregex = @{$config{'allregex'}};
 }
