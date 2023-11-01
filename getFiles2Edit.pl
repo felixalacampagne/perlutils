@@ -6,6 +6,8 @@
 # matching files. Could possibly use "FINDSTR" but not without a lot
 # of trickery. So perl it is...
 
+# 01 Nov 2023 Move regexes to a config file so changes to the programme list
+# don't show up as git changes. 
 # 29 Jul 2023 Acutally use the generated unique file name to avoid overwriting 
 # existing destination files with the same name. Use a temporary filename while
 # the move is ongoing to make it easier to spot which files are not yet complete.
@@ -31,51 +33,24 @@ use Getopt::Std;
 use Term::ReadKey;
 use FALC::SCULog;
 use Win32::Console;
-my $VERSION="GETFILES2EDIT v1.1 20230729";
+use JSON;
+my $VERSION="GETFILES2EDIT v1.1 20231101";
 
 
 my $LOG = FALC::SCULog->new();
 my $CONSOLE=Win32::Console->new;
 my $CONSOLESTARTTILE=$CONSOLE->Title();
 
-   # For HD H264 recordings (VU+) for SmartCut editing
-my @H264regexes;
-#   push(@H264regexes, "NPO3 HD - ");
    
-   # push(@H264regexes, "Play4 - ");
-   push(@H264regexes, "VTM 2 HD - ");
-   push(@H264regexes, "BBC .* HD - Doctor Who");
+my @H264regexes;  # For H264 recordings (VU+) for SmartCut editing
+my @MP2regexes;   # For MPEG2 recordings (VU+) for Cuttermaran editing
+my @allregex;     # For all recordings (DB7025) for Cuttermaran editing
 
-   # push(@H264regexes, "BBC Two HD - ");
-   # push(@H264regexes, "BBC Three HD - ");
-   # push(@H264regexes, "BBC Four HD - ");
-   push(@H264regexes, "ITV HD - ");
-   push(@H264regexes, "Channel 5 HD - Yellowstone");
-   push(@H264regexes, "BBC One Lon HD - The Sixth Commandment");
-   
-   
-   
-   # Non-HD H264 channels (VU+) for SmartCut editing
-   push(@H264regexes, "Play5 - Greys Anatomy"); # Leave Graham Norton on ultimo
-   push(@H264regexes, "VTM 3 - ");
-   push(@H264regexes, "VTM 4 - MASH");
-   push(@H264regexes, "Play6 - ");
+# TODO: specify on command line
+my $file = "getfile2edit.json";  
 
-   # SD, ie. MPEG, recordings (VU+) for Cuttermaran editing
-my @MP2regexes;
-   push(@MP2regexes, "BBC Three - ");
-   # push(@MP2regexes, "ITV(?: *\\+ *1)? - The Bay");
-   push(@MP2regexes, "Channel 5 - ");
-   # push(@MP2regexes, "5STAR(?: *\\+1)? - ");
-   # push(@MP2regexes, "Channel 4(?: *\\+ *1)? - ");
-   # push(@MP2regexes, "E4(?: *\\+1)? - ");
-   push(@MP2regexes, "ITV4 - The Americans");
+  
 
-   # For all recordings (DB7025) for Cuttermaran editing
-my @allregex;
-   push(@allregex, ".*");
-   
-my @gRegexes = @H264regexes;
 my $srcdir = "";
 my $dstdir = "";
 my $logtofile = 0;
@@ -84,10 +59,20 @@ my $logfh;
 my $logfilename;
 my %opts;
 
+getopts('bvlpsa', \%opts);
 
+if( $opts{"b"} == 1)
+{
+   # Bootstrap config file
+   genDefaultConfig($file);
+   exit(0);
+}
 
-getopts('vlpsa', \%opts);
-
+loadConfig($file);
+   
+# NB. must assign @gRegexes AFTER loading the configs so I guess it must be making a copy of the array
+# so should really be using a reference but that would mean changing all the decorations
+my @gRegexes = @H264regexes;
 if( $opts{"v"} == 1)
 {
    $LOG->level(SCULog->LOG_DEBUG);
@@ -105,6 +90,8 @@ if( $opts{"p"} == 1)
 # which supports having different directories for the SD and HDs unless
 # both are specified on the command line. I guess having both the same
 # unless specified otherwise might work...
+# TODO: could simply have one config file per file/src/dest type, the command line would
+# be somewhat lengthy but it's run from a script anyway.
 if( $opts{"s"} == 1)
 {
    @gRegexes = @MP2regexes;
@@ -113,6 +100,10 @@ elsif( $opts{"a"} == 1)
 {
    @gRegexes = @allregex;
 }
+
+# print Dumper @gRegexes;
+
+
 
 $srcdir = $ARGV[0];
 shift(@ARGV); #Removes first element
@@ -271,7 +262,7 @@ my $fullregex;
    #   - Move matching files (using DOS command?) to dest.
 
    @tsfiles = getTSFiles($origdir);
-   $LOG->info($ME . "Count .TS files found in '$origdir': " . @tsfiles . "\n");
+   $LOG->info($ME . "Count of .TS files found in '$origdir': " . @tsfiles . "\n");
    foreach my $tsfullfile (@tsfiles)
    {
       ($tsfilename,$dirs,$suffix) = fileparse( $tsfullfile );
@@ -292,7 +283,7 @@ my $fullregex;
                
                # Use a temp filename while move is progress as it can take a while and don't
                # want the file to be picked up by other utilities. eit move does not need temp
-               # file since it is msall and moved quickly
+               # file since it is small and moved quickly
                my $inprogname = $destpath . ".f2emvinprog";
                move($tsfullfile, $inprogname);
                move($inprogname, $destpath);
@@ -391,4 +382,87 @@ my $title = shift;
 		$title =': ' . $title;
 	}
 	$CONSOLE->Title($CONSOLESTARTTILE . $title);
+}
+
+sub savetext
+{
+my ($path, $data) = @_;
+
+   unlink "$path";
+   if(open(my $output, ">", $path) )
+   {
+      binmode $output, ":unix:encoding(UTF-8)";
+      print $output $data;
+      close($output);
+   }
+   else
+   {
+      warn "Failed to save file: " . $path . " : " . $! . "\n";
+   }
+}
+
+sub loadtext 
+{
+   my ($file) = @_;
+   
+   my $fulfile = File::Spec->rel2abs($file);
+   
+   open my $fh, '<', $fulfile or die "Can't open file $fulfile: $!";
+     
+   binmode $fh, ":encoding(utf-8)";   
+   my $file_content;
+   
+   read $fh, $file_content, -s $fh;
+   return $file_content
+}
+
+sub genDefaultConfig
+{
+my ($file) = @_;
+my %bootstrapconfig = ();
+   # H264 channels (VU+) for SmartCut editing
+   push(@H264regexes, "VTM 2 HD - ");
+   push(@H264regexes, "BBC .* HD - Doctor Who");
+
+   push(@H264regexes, "BBC Two HD - ");
+   push(@H264regexes, "BBC Three HD - ");
+   push(@H264regexes, "BBC Four HD - ");
+   push(@H264regexes, "ITV HD - ");
+   push(@H264regexes, "Channel 5 HD - Yellowstone");
+   push(@H264regexes, "BBC One Lon HD - The Sixth Commandment");
+   push(@H264regexes, "Play5 - Greys Anatomy"); 
+   push(@H264regexes, "VTM 3 - ");
+   push(@H264regexes, "VTM 4 - MASH");
+   push(@H264regexes, "Play6 - ");
+
+
+   # MPEG2 channels (VU+) for Cuttermaran editing
+   push(@MP2regexes, "BBC Three - ");
+   push(@MP2regexes, "ITV(?: *\\+ *1)? - ");
+   push(@MP2regexes, "Channel 5 - ");
+   push(@MP2regexes, "5STAR(?: *\\+1)? - ");
+   push(@MP2regexes, "Channel 4(?: *\\+ *1)? - ");
+   push(@MP2regexes, "E4(?: *\\+1)? - ");
+   push(@MP2regexes, "ITV4 - The Americans");
+
+   # Everything (DB7025) for Cuttermaran editing
+   push(@allregex, ".*"); 
+   
+   $bootstrapconfig{'H264regexes'} = \@H264regexes;
+   $bootstrapconfig{'MP2regexes'}  = \@MP2regexes;
+   $bootstrapconfig{'allregex'}    = \@allregex;
+   my $json = to_json(\%bootstrapconfig, {utf8 => 1, pretty => 1, canonical => 1});
+   savetext($file, $json);     
+}
+
+sub loadConfig
+{
+my ($file) = @_;  
+my $json = loadtext($file);
+my $mapref = decode_json($json);
+my %config = %{$mapref};
+
+   @H264regexes = $config{'H264regexes'};
+   @MP2regexes = $config{'MP2regexes'};
+   @allregex = $config{'allregex'};
 }

@@ -5,6 +5,7 @@
 *.bak
 *.lnk
 *.log
+*.json
 test*.*
 lib/*
 !lib/FALC
