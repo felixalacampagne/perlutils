@@ -34,7 +34,7 @@ use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML        
 use open ":std", ":encoding(UTF-8)"; # Tell Perl UTF-8 is being used.
-print "EIT2EPS v3.8 20230813b\n";
+print "EIT2EPS v3.8 20231101a\n";
 
 
 # Kludge to provide a command to create the folder artwork for a new program
@@ -42,7 +42,7 @@ print "EIT2EPS v3.8 20230813b\n";
 my $gARTCMDTMPL=$ENV{ARTCMD} . "";
 
 # This is the default value, it can be overridden from the command line
-my $NFOREPOPATH="\\\\NAS\\public\\Videos\\mp4\\ZZnforepo"; # "\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
+my $NFOREPOPATH="\\\\MYCLOUD-36LUHY\\Public\\Videos\\mp4\\ZZnforepo"; # "\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
 
 # script is intended for use with filename which have the date/channel info removed
 # this is to allow the EPS line to be accumulated into a .eps file with the name
@@ -608,7 +608,9 @@ sub getDescFromEPS
    my ($epsdir, $progname, $srcseas, $srceps) = @_;
    my $epsdesc = "";
    my $epsfile = findepsfile($epsdir, $progname, 0);
-   if(-s $epsfile)
+   my $s = -s $epsfile;
+
+   if(-s $epsfile)  # -s exists and has size > 0
    {
       my $xp = XML::XPath->new(filename => $epsfile);
       my $xpcrit = "//season[show = '$progname' and id='$srcseas']/episode[id='$srceps']/description/text()";
@@ -635,6 +637,10 @@ sub getDescFromEPS
 #            }  
 #         }
 #      }
+   }
+   else
+   {
+      print "EPS file does not exist: " . $epsfile . ": " . $! . "\n";
    }
    return $epsdesc;
 }
@@ -878,23 +884,40 @@ sub saveutf8xfile
 {
 my ($path, $data) = @_;
 
-   unlink "$path";
-   
-   # To have a utf-8 encoded file with unix line endings
-   # NB. The order of the 'layers' is important
-   # putting the utf8 before unix doesn't work and apparently should not have a space 
-   # not have a space between them.
-   # NBB The Perl docs helpfully do not make any mention of the "unix" layer.
-   
-   if(open(my $output, ">", $path) )
+   # Strange failures with new NAS drive: Inappropriate I/O control operation
+   # The -s and -e file test operators are returning false for an EPS file which
+   # definitely exists, so it isn't read in the first place. When it is re-written
+   # the delete works but the open then returns the 'Inappropriate I/O control operation'
+   # error which leaves a zero length file which is very annoying. Try to avoid this by
+   # initially writing to a temp file and only deleting the original when the tmp
+   # file has been successfully written, really need to make a backup, 
+   if($data ne "")
    {
-      binmode $output, ":unix:encoding(UTF-8)";
-      print $output $data;
-      close($output);
+      my $tmp = $path . ".tmp";
+      unlink "$tmp";
+      
+      # To have a utf-8 encoded file with unix line endings
+      # NB. The order of the 'layers' is important
+      # putting the utf8 before unix doesn't work and apparently should not have a space 
+      # not have a space between them.
+      # NBB The Perl docs helpfully do not make any mention of the "unix" layer.
+      if(open(my $output, ">", $tmp) )
+      {
+         binmode $output, ":unix:encoding(UTF-8)";
+         print $output $data;
+         close($output);
+         
+         move($path, $path . ".backup");
+         move($tmp, $path);
+      }
+      else
+      {
+         print "Failed to create temp file: " . $tmp . " : " . $! . "\n";
+      }
    }
    else
    {
-      print "Failed to create file: " . $path . " : " . $! . "\n";
+      print ("NOT writing zero length string to $path\n");
    }
 }
 
