@@ -34,7 +34,7 @@ use Term::ReadKey;
 use FALC::SCULog;
 use Win32::Console;
 use JSON;
-my $VERSION="GETFILES2EDIT v1.1 20231101";
+my $VERSION="GETFILES2EDIT v1.1 20231101b";
 
 
 my $LOG = FALC::SCULog->new();
@@ -102,6 +102,11 @@ elsif( $opts{"a"} == 1)
 }
 
 my $dbg = Dumper @gRegexes;
+# Instead of dumping the array as a single VAR it dumps each element as
+# a new var, eg. VAR1, VAR2, which might indicate there is something wrong in the
+# way to arrays are reconstitued from the config file. The code using the arrays
+# seems to work OK though so not going to worry too much about it - it's Perl so
+# have learnt not to expect anything to make much sense.
 $LOG->debug("gRegexes contains:\n". $dbg . "\n");
 
 
