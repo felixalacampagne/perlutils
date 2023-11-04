@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# 04-Nov-2023 backup the eps file to avoid loosing manually entered details when file test
+#             operators are giving strange results.
 # 13-Aug-2023 v3_8 always write new nfo/eps with sanitized description. nfo in repo is not modified.
 # 29-Jul-2023 v3_7 option to process current directory using .eit files if present 
 #             otherwise as for single video files.
@@ -34,7 +36,7 @@ use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML        
 use open ":std", ":encoding(UTF-8)"; # Tell Perl UTF-8 is being used.
-print "EIT2EPS v3.8 20231101a\n";
+print "EIT2EPS v3.8 20231104a\n";
 
 
 # Kludge to provide a command to create the folder artwork for a new program
@@ -525,6 +527,7 @@ sub updateeps
 
    # print "XML as string:$xmlout\n";
    
+   safebackup($path);
    saveutf8xfile($path, $xmlout);
 }
 
@@ -616,7 +619,8 @@ sub getDescFromEPS
       my $xpcrit = "//season[show = '$progname' and id='$srcseas']/episode[id='$srceps']/description/text()";
       my $descnodes =  $xp->find($xpcrit);
       
-      foreach my $node ($descnodes->get_nodelist) {
+      foreach my $node ($descnodes->get_nodelist) 
+      {
          my $desc = $node->getValue();
          if(length($desc) > length($epsdesc))
          {
@@ -624,19 +628,6 @@ sub getDescFromEPS
          }          
       }
       print "Description from $epsfile: $epsdesc\n";
-#      my $i = $descnodes->size();
-#      if($i > 0)
-#      {
-#         my $n;
-#         for($n=0; $n<$i; $n++)
-#         {
-#            my $desc = $descnodes->get_node($n)->getValue();
-#            if(length($desc) > length($epsdesc))
-#            {
-#              $epsdesc = $desc;
-#            }  
-#         }
-#      }
    }
    else
    {
@@ -887,10 +878,10 @@ my ($path, $data) = @_;
    # Strange failures with new NAS drive: Inappropriate I/O control operation
    # The -s and -e file test operators are returning false for an EPS file which
    # definitely exists, so it isn't read in the first place. When it is re-written
-   # the delete works but the open then returns the 'Inappropriate I/O control operation'
+   # the delete works but the open then returns 'Inappropriate I/O control operation'
    # error which leaves a zero length file which is very annoying. Try to avoid this by
    # initially writing to a temp file and only deleting the original when the tmp
-   # file has been successfully written, really need to make a backup, 
+   # file has been successfully written.
    if($data ne "")
    {
       my $tmp = $path . ".tmp";
@@ -906,8 +897,6 @@ my ($path, $data) = @_;
          binmode $output, ":unix:encoding(UTF-8)";
          print $output $data;
          close($output);
-         
-         move($path, $path . ".backup");
          move($tmp, $path);
       }
       else
@@ -921,6 +910,24 @@ my ($path, $data) = @_;
    }
 }
 
+# Makes a rolling backup of the given file. Does not rely on 
+# file test operators to test presence of files, it simply does
+# the move command which does not produce any visible errors when
+# there is no source file or when the dest file already exists.
+# Keeps a max. of 10 backups, the most recent numbered '0'
+sub safebackup
+{
+my ($path) = @_;
+
+my $backfmt=$path . ".%d.backup";
+	for(my $bkupid = 9; $bkupid>0; $bkupid--)
+	{
+		my $src = sprintf($backfmt, ($bkupid - 1));
+		my $dst = sprintf($backfmt, ($bkupid));
+	 	move($src, $dst);	
+	}
+	copy($path, sprintf($backfmt, 0));
+}
 
 sub loadfile2array
 {
