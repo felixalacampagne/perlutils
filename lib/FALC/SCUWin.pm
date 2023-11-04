@@ -126,10 +126,10 @@ my $startsecs = time();
    
       $elapsed = (time() - $startsecs);
       $remain = secs2dhms($totsleep - $elapsed);
-      $LOG->info("iambusy: Remaining busy time: " . $remain);
+      $LOG->info("iambusy: Remaining busy time: " . $remain . "\n");
       if($elapsed >= $totsleep)
       {
-         $LOG->debug("iambusy: target time exceeded, no more waiting to do");   
+         $LOG->debug("iambusy: target time exceeded, no more waiting to do\n");   
       }
    }until($elapsed >= $totsleep);
    
