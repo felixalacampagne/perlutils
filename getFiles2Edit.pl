@@ -6,6 +6,8 @@
 # matching files. Could possibly use "FINDSTR" but not without a lot
 # of trickery. So perl it is...
 
+# 11 Nov 2023 Config file is specified by command line option. A single set of regexes 
+# is loaded from the config file. The all option takes precedence and does not need a config file.
 # 01 Nov 2023 Move regexes to a config file so changes to the programme list
 # don't show up as git changes. 
 # 29 Jul 2023 Acutally use the generated unique file name to avoid overwriting 
@@ -34,45 +36,49 @@ use Term::ReadKey;
 use FALC::SCULog;
 use Win32::Console;
 use JSON;
-my $VERSION="GETFILES2EDIT v1.1 20231101b";
+my $VERSION="GETFILES2EDIT v2.0 20231111a";
 
 
 my $LOG = FALC::SCULog->new();
 my $CONSOLE=Win32::Console->new;
 my $CONSOLESTARTTILE=$CONSOLE->Title();
 
-   
-my @H264regexes;  # For H264 recordings (VU+) for SmartCut editing
-my @MP2regexes;   # For MPEG2 recordings (VU+) for Cuttermaran editing
-my @allregex;     # For all recordings (DB7025) for Cuttermaran editing
-
+my @CFGregexes;   # regexes from config file
+my @allregex;     # For all recordings
+ 
 # TODO: specify on command line
 my $file = "getfile2edit.json";  
 
   
-
+my @gRegexes = ();
 my $srcdir = "";
 my $dstdir = "";
 my $logtofile = 0;
 my $pauseonexit = 0;
 my $logfh;
 my $logfilename;
+
+# Copy everything
+push(@allregex, ".*");
+
 my %opts;
 
-getopts('bvlpsa', \%opts);
+getopts('bvlpac:', \%opts);
+
+if( $opts{"c"})
+{
+   # Load config from specified file. Should contain a SINGLE list of regexes
+   $file = $opts{"c"};
+}
+$file = File::Spec->rel2abs($file);
 
 if( $opts{"b"} == 1)
 {
-   # Bootstrap config file
+   # Bootstrap config file using command line name if provided
    genDefaultConfig($file);
    exit(0);
 }
 
-loadConfig($file);
-   
-# NB. must assign @gRegexes AFTER loading the configs so I guess it must be making a copy of the array
-# so should really be using a reference but that would mean changing all the decorations
-my @gRegexes = @H264regexes;
 if( $opts{"v"} == 1)
 {
    $LOG->level(FALC::SCULog->LOG_DEBUG);
@@ -86,38 +92,29 @@ if( $opts{"p"} == 1)
    $pauseonexit = 1;
 }
 
-# Should think of a better way to do this, but haven't come up with anything
-# which supports having different directories for the SD and HDs unless
-# both are specified on the command line. I guess having both the same
-# unless specified otherwise might work...
-# TODO: could simply have one config file per file/src/dest type, the command line would
-# be somewhat lengthy but it's run from a script anyway.
-if( $opts{"s"} == 1)
-{
-   @gRegexes = @MP2regexes;
-}
-elsif( $opts{"a"} == 1)
+if( $opts{"a"} == 1)
 {
    @gRegexes = @allregex;
+}
+else
+{
+   (-f $file)  or die "Invalid conifg file: $!: $file";
+   loadConfig($file);
+   @gRegexes = @CFGregexes;
 }
 
 my $dbg = Dumper @gRegexes;
 # Instead of dumping the array as a single VAR it dumps each element as
 # a new var, eg. VAR1, VAR2, which might indicate there is something wrong in the
-# way to arrays are reconstitued from the config file. The code using the arrays
+# way the arrays are reconstitued from the config file. The code using the arrays
 # seems to work OK though so not going to worry too much about it - it's Perl so
 # have learnt not to expect anything to make much sense.
 $LOG->debug("gRegexes contains:\n". $dbg . "\n");
-
-
 
 $srcdir = $ARGV[0];
 shift(@ARGV); #Removes first element
 $dstdir = $ARGV[0];
 
-#print "Logging:     " . $logtofile . "\n";
-#print "Pauseonexit: " . $pauseonexit . "\n";
-#die(0);
 if($srcdir eq "")
 {
    $srcdir = "X:\\movie";
@@ -131,6 +128,8 @@ if($dstdir eq "")
 $srcdir = File::Spec->rel2abs($srcdir);
 $dstdir = File::Spec->rel2abs($dstdir);
 
+(-d $srcdir) or die "Invalid destination directory: $!: $srcdir";
+(-d $dstdir) or die "Invalid source directory: $!: $dstdir";
 
 if ( $logtofile == 1 )
 {
@@ -428,36 +427,30 @@ sub genDefaultConfig
 my ($file) = @_;
 my %bootstrapconfig = ();
    # H264 channels (VU+) for SmartCut editing
-   push(@H264regexes, "VTM 2 HD - ");
-   push(@H264regexes, "BBC .* HD - Doctor Who");
-
-   push(@H264regexes, "BBC Two HD - ");
-   push(@H264regexes, "BBC Three HD - ");
-   push(@H264regexes, "BBC Four HD - ");
-   push(@H264regexes, "ITV HD - ");
-   push(@H264regexes, "Channel 5 HD - Yellowstone");
-   push(@H264regexes, "BBC One Lon HD - The Sixth Commandment");
-   push(@H264regexes, "Play5 - Greys Anatomy"); 
-   push(@H264regexes, "VTM 3 - ");
-   push(@H264regexes, "VTM 4 - MASH");
-   push(@H264regexes, "Play6 - ");
+   push(@CFGregexes, "VTM 2 HD - ");
+   push(@CFGregexes, "BBC .* HD - Doctor Who");
+   push(@CFGregexes, "BBC Two HD - ");
+   push(@CFGregexes, "BBC Three HD - ");
+   push(@CFGregexes, "BBC Four HD - ");
+   push(@CFGregexes, "ITV HD - ");
+   push(@CFGregexes, "Channel 5 HD - Yellowstone");
+   push(@CFGregexes, "BBC One Lon HD - The Sixth Commandment");
+   push(@CFGregexes, "Play5 - Greys Anatomy"); 
+   push(@CFGregexes, "VTM 3 - ");
+   push(@CFGregexes, "VTM 4 - MASH");
+   push(@CFGregexes, "Play6 - ");
 
 
    # MPEG2 channels (VU+) for Cuttermaran editing
-   push(@MP2regexes, "BBC Three - ");
-   push(@MP2regexes, "ITV(?: *\\+ *1)? - ");
-   push(@MP2regexes, "Channel 5 - ");
-   push(@MP2regexes, "5STAR(?: *\\+1)? - ");
-   push(@MP2regexes, "Channel 4(?: *\\+ *1)? - ");
-   push(@MP2regexes, "E4(?: *\\+1)? - ");
-   push(@MP2regexes, "ITV4 - The Americans");
-
-   # Everything (DB7025) for Cuttermaran editing
-   push(@allregex, ".*"); 
+   push(@CFGregexes, "BBC Three - ");
+   push(@CFGregexes, "ITV(?: *\\+ *1)? - ");
+   push(@CFGregexes, "Channel 5 - ");
+   push(@CFGregexes, "5STAR(?: *\\+1)? - ");
+   push(@CFGregexes, "Channel 4(?: *\\+ *1)? - ");
+   push(@CFGregexes, "E4(?: *\\+1)? - ");
+   push(@CFGregexes, "ITV4 - The Americans");
    
-   $bootstrapconfig{'H264regexes'} = \@H264regexes;
-   $bootstrapconfig{'MP2regexes'}  = \@MP2regexes;
-   $bootstrapconfig{'allregex'}    = \@allregex;
+   $bootstrapconfig{'FilenamePatterns'}  = \@CFGregexes;
    my $json = to_json(\%bootstrapconfig, {utf8 => 1, pretty => 1, canonical => 1});
    savetext($file, $json);     
 }
@@ -469,7 +462,5 @@ my $json = loadtext($file);
 my $mapref = decode_json($json);
 my %config = %{$mapref};
 
-   @H264regexes = @{$config{'H264regexes'}};
-   @MP2regexes = @{$config{'MP2regexes'}};
-   @allregex = @{$config{'allregex'}};
+   @CFGregexes = @{$config{'FilenamePatterns'}};
 }
