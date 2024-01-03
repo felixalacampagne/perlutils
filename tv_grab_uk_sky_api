@@ -26,6 +26,7 @@ use DateTime;
 use Encode;
 use DateTime::Format::XSD; # cpanm DateTime::Format::XSD
 use DateTime::TimeZone;
+use DateTime;
 use LWP::UserAgent;
 use HTTP::Cookies;
 use XMLTV;
