@@ -161,7 +161,8 @@ for(my $day = $offset; $day < $days+$offset; $day++)
    #   for each schedule item
    #      for each events item
    #         extract the event item into a program for schedule itme>sid
-   #my $epgref = @{$tvg}[0]; # This is a hash ref
+
+
    for my $block (@{$tvg}) 
    {
       logger("block date: %s\n", $block->{date});
@@ -171,8 +172,9 @@ for(my $day = $offset; $day < $days+$offset; $day++)
          logger("Processing events for sid: %s\n", $sched->{sid});
          for my $event (@{$sched->{events}})
          {
-            my $endunix = $event->{st} + $event->{d};
-            logger("Processing event: %s %d %d %d\n", $event->{t}, $event->{st}, $event->{d}, $endunix);
+            my $startunix = $event->{st};
+            my $endunix = $startunix + $event->{d};
+            logger("Processing event: %s %d %d %d\n", $event->{t}, $startunix, $event->{d}, $endunix);
             
             # One Show startime displays as 19:00 whether localtime or gmtime is used even with 'TZ=Europe/Brussels'
             # eg. using gmtime
@@ -180,18 +182,41 @@ for(my $day = $offset; $day < $days+$offset; $day++)
             # Processing event:         Wed Jan  3 19:00:00 2024 Wed Jan  3 19:30:00 2024
             # Unix time should be GMT by definition so need a way to convert the GMT time to local (CET) time
             # Or does the rest of the processing work when the XMLTV times use GMT?
-            my $starttime = gmtime( $event->{st});
-            my $endtime = gmtime($endunix);
-            logger("Processing event:         %s %s\n", $starttime, $endtime);
+            # Yet more weird Perl behaviour: TZ unset           - gmtime 19:00, localtime 20:00
+            #                                TZ=Europe/Brussels - gmtime 19:00, localtime 19:00
+            #my $starttime = gmtime( $event->{st});
+            #my $endtime = gmtime($endunix);
+            
+            my $startdt = DateTime->from_epoch(epoch => $startunix);
+            my $enddt = DateTime->from_epoch(epoch => $endunix);
 
-            # TODO: Extract the data for each event into the @progrannes array
-            # NB the 'event' does not contain the channel id (sid) - the start time is present as a unix timestamp, I think
-            # but probably need to also pass the date from the 'block'
+            # DateTime gives UTC when no timezone is applied, including when TZ is set
+            logger("  UTC start:%s end:%s\n", $startdt->strftime("%Y%m%d %H%M%S %z"), $enddt->strftime("%Y%m%d %H%M%S %z"));
+
+            #my $tz = DateTime::TimeZone->new( name => 'local' );
+            #$dt = $dt->set_time_zone($tz);
+            ## Original DateTime with timezone applied gives the appropriate offset time
+            #logger("DateTime+TZ:  %s\n", $dt->strftime("%Y%m%d %H%M%S %z"));
+
+            # DateTime with immediate timzone gives appropriate offset time
+            my $startdttz = DateTime->from_epoch(epoch => $startunix, time_zone => 'local');
+            my $enddttz = DateTime->from_epoch(epoch => $endunix, time_zone => 'local');
+            logger("  CET start:%s end:%s\n", $startdttz->strftime("%Y%m%d %H%M%S %z"), $enddttz->strftime("%Y%m%d %H%M%S %z"));
          }
+
+         # guideid is known. 
+         # (@{$sched->{events}} contains the array of event for sid today
+         # Need to find the channel map for sid to pass to extractProgrammesForChannel
+         # eg. $mapchannelhash{$sched->{sid}} maybe?
+         # extractProgrammesForChannel needs to take a 'simple' array of events to be mapped to an entry in @programmes
+
+	 # NB This is unlikely to work as is!!!!
+         my $chref = $mapchannelhash{$sched->{sid}} # $mapchannelhash{$keychmap};
+         extractProgrammesForChannel($sched->{events}}, $chref, \@programmes);
       }
-   # ...
    }   
    exit;
+
    # To find an entry in the array of hashes with a given value use something like
    # my ($p) = first { $id == $_->{id} } @$people; (use List::Util qw(first);)
    # Searching an array of hashes like this is not performant when finding multiple different values.
