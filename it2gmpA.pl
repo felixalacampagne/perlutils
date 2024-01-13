@@ -12,7 +12,11 @@
 # 05 Apr 2020 Track count allows for running jobs
 # 14 Sep 2020 Tweaks to file name conversion from experience with old version on holiday
 #             Added playlist order conversion option, instead of random selection, which is still the default.
-
+# 13 Jan 2024 Take size of files already present in destination directory into account. This is
+#             because the tool is most often used to write to a temp directory on large disks in multiple sessions
+#             where the overall size of the directory should not exceed the total size specified.
+#             Uses composer instead of artist to reduce number of single file directories belong to
+#             uncommon 'one-hit wonder' artists.
 #             NB. deletion of old files is DISABLED by default: use -nok (--nokeep) to prevent deletion
 
 use 5.010;  
@@ -172,6 +176,10 @@ my $plIdx = 0;
 
 
 my $trackcnt = 0;
+
+# Take into account the size of the files already present in the destination directory
+my $initialbytecount = dirsize($playerroot);
+
 my $bytecount = 0;
 $log->debug("Number of items in playlist: %d\n", $plcount);
 
@@ -194,9 +202,11 @@ my $asyncpid = 0;
 my $asyncdestfile = "";
 my $avgsz = 0;
 my $runningjobs = 0;
+my $dirbytetotal = $initialbytecount;
 while(($trackcnt + $runningjobs) < $tracktotal)
 {
    wakeywakey();
+   $dirbytetotal = $initialbytecount + $bytecount;
    if( checkFreeSpace($playerdrv, $RESERVEDSPACE) < 1)
    {
       $log->info("Out of diskspace on %s:\\ - exiting\n", $playerdrv);
@@ -204,12 +214,12 @@ while(($trackcnt + $runningjobs) < $tracktotal)
    }
    elsif($maxbytes > 0)
    {
-      if($bytecount >= ($maxbytes - ($avgsz * $runningjobs)  ))
+      if($dirbytetotal >= ($maxbytes - ($avgsz * $runningjobs)  ))
       {
-         $log->debug("Max. bytecount (%d) exceeded: %d (jobs:%d avg:%d pend:%d)\n", $maxbytes, $bytecount, $runningjobs, $avgsz, ($avgsz * $runningjobs));
+         $log->debug("Max. bytecount (%d) exceeded: %d (jobs:%d avg:%d pend:%d)\n", $maxbytes, $dirbytetotal, $runningjobs, $avgsz, ($avgsz * $runningjobs));
          last;
       }
-      $log->info("Written Tracks: %d Bytes: %d Remaining: %d\n", $trackcnt, $bytecount, $maxbytes-$bytecount);
+      $log->info("Written Tracks: %d Bytes: %d Remaining: %d\n", $trackcnt, $bytecount, $maxbytes-$dirbytetotal);
    }
    else
    {
@@ -252,7 +262,10 @@ while(($trackcnt + $runningjobs) < $tracktotal)
    Encode::_utf8_on($srcpathFS);
    $srcpathFS = getFSname($srcpathFS);
    
-   my $albumFS = sanitize(getFSname($track->album()));   
+   # Composer is better than artist for compilations because 'artist' can result in many single
+   # file directories but 'composer' is usually the album title instead of being the same as artist
+   # so all the 'one track wonders' are grouped in their own directory
+   my $albumFS = sanitize(getFSname($track->composer()));    #  sanitize(getFSname($track->album()));   
    my $artistFS = sanitize(getFSname($track->artist()));
    
    my ($volFS, $directoriesFS, $fileFS) = File::Spec->splitpath($srcpathFS);
@@ -453,6 +466,23 @@ $log->debug("%s:\\: Free %d  Min: %d  Ret: %d\n", $drv, $freebytes, $bytesreq, $
 return $ret
 }
 
+# Returns the total size in bytes of the files in the given directory and sub-directories
+sub dirsize
+{
+my ($dir) = @_;
+my $total  = 0;
+   find(sub { $total += -s if -f }, $dir);
+   return $total;
+}
+
+# Returns number of files in the given directory and sub-directories
+sub dircount
+{
+my ($destdir) = @_;
+my $fcount = 0;
+   find(sub { $fcount += 1 if -f }, $destdir);
+   return $fcount;
+}
 
 
 # Removes all files and folders from the root dir
