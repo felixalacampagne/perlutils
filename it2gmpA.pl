@@ -203,6 +203,11 @@ my $asyncdestfile = "";
 my $avgsz = 0;
 my $runningjobs = 0;
 my $dirbytetotal = $initialbytecount;
+if($maxbytes > 0)
+{
+   my $space = $maxbytes - $initialbytecount;
+   $log->debug("Initial available space in directory: %s (%s)\n", formatsize($space), $space);
+}
 while(($trackcnt + $runningjobs) < $tracktotal)
 {
    wakeywakey();
@@ -219,7 +224,7 @@ while(($trackcnt + $runningjobs) < $tracktotal)
          $log->debug("Max. bytecount (%d) exceeded: %d (jobs:%d avg:%d pend:%d)\n", $maxbytes, $dirbytetotal, $runningjobs, $avgsz, ($avgsz * $runningjobs));
          last;
       }
-      $log->info("Written Tracks: %d Bytes: %d Remaining: %d\n", $trackcnt, $bytecount, $maxbytes-$dirbytetotal);
+      $log->info("Written Tracks: %d Bytes: %d Remaining: %s\n", $trackcnt, $bytecount, formatsize($maxbytes-$dirbytetotal));
    }
    else
    {
@@ -265,8 +270,8 @@ while(($trackcnt + $runningjobs) < $tracktotal)
    # Composer is better than artist for compilations because 'artist' can result in many single
    # file directories but 'composer' is usually the album title instead of being the same as artist
    # so all the 'one track wonders' are grouped in their own directory
-   my $albumFS = sanitize(getFSname($track->composer()));    #  sanitize(getFSname($track->album()));   
-   my $artistFS = sanitize(getFSname($track->artist()));
+   my $albumFS = sanitize(getFSname($track->album()));   
+   my $artistFS = sanitize(getFSname($track->composer())); # sanitize(getFSname($track->artist()));
    
    my ($volFS, $directoriesFS, $fileFS) = File::Spec->splitpath($srcpathFS);
 
@@ -462,7 +467,7 @@ my $bytesreq = $mbreq * 1024 * 1024;
    
 my $freebytes = (Win32::DriveInfo::DriveSpace($drv))[6];
 my $ret = ($freebytes > $bytesreq) ? 1 : 0;
-$log->debug("%s:\\: Free %d  Min: %d  Ret: %d\n", $drv, $freebytes, $bytesreq, $ret);
+$log->debug("%s:\\: Free %s (%d)  Min: %s (%d)  Ret: %d\n", $drv, formatsize($freebytes), $freebytes, formatsize($bytesreq), $bytesreq, $ret);
 return $ret
 }
 
@@ -484,6 +489,15 @@ my $fcount = 0;
    return $fcount;
 }
 
+sub formatsize {
+my $size = $_[0];
+   foreach ('B','KB','MB','GB','TB','PB')
+   {
+      return (sprintf("%.2f",$size) . "$_") if $size < 1024;
+      $size /= 1024;
+   }
+   return "Too large!";
+}
 
 # Removes all files and folders from the root dir
 sub cleanroot
