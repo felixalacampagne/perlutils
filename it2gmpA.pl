@@ -17,7 +17,9 @@
 #             where the overall size of the directory should not exceed the total size specified.
 #             Uses composer instead of artist to reduce number of single file directories belong to
 #             uncommon 'one-hit wonder' artists.
-#             NB. deletion of old files is DISABLED by default: use -nok (--nokeep) to prevent deletion
+# 14 Jan 2024 Clean up output and fix hang when no files are written.
+#
+#             NB. deletion of old files is DISABLED by default: use -nok (--nokeep) to delete existing content of the destination 
 
 use 5.010;  
 use strict;
@@ -203,6 +205,8 @@ my $asyncdestfile = "";
 my $avgsz = 0;
 my $runningjobs = 0;
 my $dirbytetotal = $initialbytecount;
+my $prevtrackcnt = -1;
+my $tracksundefed = 0; # temp solution for looping when no tracks can be written
 if($maxbytes > 0)
 {
    my $space = $maxbytes - $initialbytecount;
@@ -212,24 +216,37 @@ while(($trackcnt + $runningjobs) < $tracktotal)
 {
    wakeywakey();
    $dirbytetotal = $initialbytecount + $bytecount;
-   if( checkFreeSpace($playerdrv, $RESERVEDSPACE) < 1)
-   {
-      $log->info("Out of diskspace on %s:\\ - exiting\n", $playerdrv);
-      last;  
-   }
-   elsif($maxbytes > 0)
-   {
-      if($dirbytetotal >= ($maxbytes - ($avgsz * $runningjobs)  ))
+
+   # It's confusing when the same count is logged multiple times - this can happen when a new job is started
+   # for a couple of loops.
+   if($prevtrackcnt < $trackcnt)
+   {   
+      $prevtrackcnt = $trackcnt;
+
+      if( checkFreeSpace($playerdrv, $RESERVEDSPACE) < 1)
       {
-         $log->debug("Max. bytecount (%d) exceeded: %d (jobs:%d avg:%d pend:%d)\n", $maxbytes, $dirbytetotal, $runningjobs, $avgsz, ($avgsz * $runningjobs));
-         last;
+         $log->info("Out of diskspace on %s:\\ - exiting\n", $playerdrv);
+         last;  
       }
-      $log->info("Written Tracks: %d Bytes: %d Remaining: %s\n", $trackcnt, $bytecount, formatsize($maxbytes-$dirbytetotal));
+      elsif($maxbytes > 0)
+      {
+         if($dirbytetotal >= ($maxbytes - ($avgsz * $runningjobs)  ))
+         {
+            $log->debug("Max. bytecount (%d) exceeded: %d (jobs:%d avg:%d pend:%d)\n", $maxbytes, $dirbytetotal, $runningjobs, $avgsz, ($avgsz * $runningjobs));
+            last;
+         }
+         
+   
+            $log->info("Written Tracks: %d Bytes: %d Remaining: %s\n", $trackcnt, $bytecount, formatsize($maxbytes-$dirbytetotal));
+            $prevtrackcnt = $trackcnt;
+   
+      }
+      else
+      {
+            $log->info("Written Tracks: %d Bytes: %d\n", $trackcnt, $bytecount);
+      }
    }
-   else
-   {
-      $log->info("Written Tracks: %d Bytes: %d\n", $trackcnt, $bytecount);
-   }
+
    if($trackcnt > 0)
    {
       $avgsz = $bytecount / $trackcnt;
@@ -244,17 +261,29 @@ while(($trackcnt + $runningjobs) < $tracktotal)
    # remove the value or just set it to a 'deleted' value.
    if($rndtrk != 0)
    {
-      do
+      # This can result in infinite loop when all tracks have been tried and set to undef
+      if($tracksundefed < $plcount)
       {
-         $plIdx = int(rand($plcount)); 
-         $track = $plItems[$plIdx];
-      }while(!defined($track));
+         do
+         {
+            $plIdx = int(rand($plcount)); 
+            $track = $plItems[$plIdx];
+         }while(!defined($track));
+      }
+      else
+      {
+         $log->info("All available tracks are present in the destination. Exiting\n");
+         last;
+      }
+      # TODO refactor randomization to use splice to remove the elements from the array so
+      # end is determined when there are no more elements in the array.
    }
    else
    {
       $track = $plItems[$plIdx];
    }
    $plItems[$plIdx] = undef; # Prevent track from being selected again (for random mode)
+   $tracksundefed++;
    $plIdx++;                 # Move index to next track (for ordered mode)
    
    # Determine track parent folder name
@@ -395,7 +424,11 @@ while(($trackcnt + $runningjobs) < $tracktotal)
          {
             $log->warn("UNSUPPORTED file type: " . $srcpathFS . "\n");
          }
-      }  
+      } # unless(-f $destpathFS)
+      else
+      {
+         $log->debug("File already exists: %s\n", $destpathFS);
+      }
       1; # Must always return 1 from the eval block
    } # end of eval
    or do
@@ -430,7 +463,8 @@ while($runningjobs > 0)
 
 if($maxbytes>0)
 {
-   $log->debug("Total bytes: written: %d remaining: %d\n", $bytecount, $maxbytes - $bytecount);
+   my $remain = $maxbytes - $dirbytetotal;
+   $log->debug("Total bytes: written: %s (%d bytes) remaining: %s (%d bytes)\n", formatsize($bytecount), $bytecount, formatsize($remain), $remain);
 }
 
 
