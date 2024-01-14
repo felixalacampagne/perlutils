@@ -463,7 +463,7 @@ while($runningjobs > 0)
 
 if($maxbytes>0)
 {
-   my $remain = $maxbytes - $dirbytetotal;
+   my $remain = $maxbytes - $initialbytecount - $bytecount;;
    $log->debug("Total bytes: written: %s (%d bytes) remaining: %s (%d bytes)\n", formatsize($bytecount), $bytecount, formatsize($remain), $remain);
 }
 
@@ -527,7 +527,7 @@ sub formatsize {
 my $size = $_[0];
    foreach ('B','KB','MB','GB','TB','PB')
    {
-      return (sprintf("%.2f",$size) . "$_") if $size < 1024;
+      return (sprintf("%.2f",$size) . "$_") if abs($size) < 1024;
       $size /= 1024;
    }
    return "Too large!";
