@@ -53,7 +53,7 @@ my $result = 0;
    print "Mouse speed is: $LS_A\n";
 }
 
-my $mspeed=10;
+my $mspeed=0;
 
 # Params in minutes
 GetOptions('speed|s=i' => \$mspeed);
