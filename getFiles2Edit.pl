@@ -5,7 +5,10 @@
 # wildcards don't work, *Homeland*.ts return nothing when there are 
 # matching files. Could possibly use "FINDSTR" but not without a lot
 # of trickery. So perl it is...
-
+#
+# Example command line:
+#   perl getFiles2Edit.pl -c "C:\TVVideos\HD\00 HDgetfiles.json" "X:\movie" "C:\TVVideos\HD" 
+#
 # 20 Jan 2024 Move all metadata failes, not just the .eit files. This is mainly to
 # keep the STB disk cleaner which has become more of an issue since they turned off the UK SD channels 
 # meaning I have to use the Ultimo for nearly all recordings.
@@ -39,7 +42,7 @@ use Term::ReadKey;
 use FALC::SCULog;
 use Win32::Console;
 use JSON;
-my $VERSION="GETFILES2EDIT v2.1 20240120a";
+my $VERSION="GETFILES2EDIT v2.1 20240121a";
 
 
 my $LOG = FALC::SCULog->new();
@@ -48,8 +51,6 @@ my $CONSOLESTARTTILE=$CONSOLE->Title();
 
 my @CFGregexes;   # regexes from config file
 my @allregex;     # For all recordings
- 
-# TODO: specify on command line
 my $file = "getfile2edit.json";  
 
   
@@ -245,7 +246,7 @@ my $ts;
       }
    }
    
-   # In desperation use a timestamp, in theory the file can't already exist!!!
+   # In desperation use a timestamp, in theory a file with this can't already exist!!!
    my @now = localtime();
    $ts = sprintf("%04d%02d%02d%02d%02d%02d", 
                         $now[5]+1900, $now[4]+1, $now[3],
@@ -271,7 +272,7 @@ my $fullregex;
    #   - Move matching files (using DOS command?) to dest.
 
    @tsfiles = getTSFiles($origdir);
-   $LOG->info($ME . "Count of .TS files found in '$origdir': %d\n", scalar @tsfiles);
+   $LOG->info($ME . "Count of .TS files found in '%s': %d\n", $origdir, scalar @tsfiles);
    foreach my $tsfullfile (@tsfiles)
    {
       ($tsfilename,$dirs,$suffix) = fileparse( $tsfullfile );
@@ -291,35 +292,14 @@ my $fullregex;
                settitle("Moving: $tsfilename");
                
                # Use a temp filename while move is progress as it can take a while and don't
-               # want the file to be picked up by other utilities. eit move does not need temp
-               # file since it is small and moved quickly
+               # want the partial file to be picked up by other utilities.
                my $inprogname = $destpath . ".f2emvinprog";
                move($tsfullfile, $inprogname);
                move($inprogname, $destpath);
                
-               # Cannot passively handle .eit when it is found as a separate file as it should only be moved if
-               # the related .ts file is moved
-               # Should also move the related files to avoid clutter up the STB disk and it is 
-               # very time consuming locating and deleting them manually.
-               # Would be better to search for all files matching the ts filename 
+               # Move files related to the .ts file to avoid clutter on the STB disk which is 
+               # very time consuming tidy up manually.
                moveMetaFiles($origdir, $tsfilename, $destdir);
-               #
-               # perl getFiles2Edit.pl -c "C:\TVVideos\HD\00 HDgetfiles.json" "X:\movie" "C:\TVVideos\HD"
-               #(my $eitfullfile = $tsfullfile) =~ s/\.ts$/.eit/;
-               #$LOG->info($ME . "Checking for '$eitfullfile'.\n");
-               #if( -f $eitfullfile )
-               #{
-               #   my $eitfile;
-               #   ($eitfile,$dirs,$suffix) = fileparse( $eitfullfile );
-               #   $destpath = getUniqueDestName($destdir, $eitfile);
-               #   $LOG->info($ME . "Moving '$eitfullfile' to $destpath.\n");
-               #   move($eitfullfile, $destpath);
-               #}
-               #else
-               #{
-               #   $LOG->info($ME . "No eit file found for  '$tsfullfile'.\n");
-               #
-               #}
             }
             else
             {
@@ -341,8 +321,7 @@ sub moveMetaFiles
 my $ME="moveMetaFiles: ";
 my ($dir, $file, $destdir) = @_;	
 (my $fileonly = $file) =~ s/\..*$/./;
-#my $fileonly = $file;
-#	$fileonly =~ s/\..*$/./;
+
 	$LOG->info($ME . "looking for meta files for %s\n", $fileonly);
   opendir my $dh, $dir or die "Couldn't open dir '$dir': $!";
   my @files = grep(/$fileonly*$/,readdir($dh));
@@ -352,7 +331,7 @@ my ($dir, $file, $destdir) = @_;
   {
   	my $fullfile = File::Spec->catdir($dir, $mfile);
     my $destpath = getUniqueDestName($destdir, $mfile);
-    $LOG->info($ME . "Moving '%s' to '%s'\n", $fullfile, $destpath);
+    $LOG->debug($ME . "Moving '%s' to '%s'\n", $fullfile, $destpath);
     move($fullfile, $destpath);  	
 	}
 }
