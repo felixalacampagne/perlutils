@@ -42,7 +42,7 @@ use Term::ReadKey;
 use FALC::SCULog;
 use Win32::Console;
 use JSON;
-my $VERSION="GETFILES2EDIT v2.1 20240121a";
+my $VERSION="GETFILES2EDIT v2.1 20240125a";
 
 
 my $LOG = FALC::SCULog->new();
@@ -324,7 +324,7 @@ my ($dir, $file, $destdir) = @_;
 
 	$LOG->info($ME . "looking for meta files for %s\n", $fileonly);
   opendir my $dh, $dir or die "Couldn't open dir '$dir': $!";
-  my @files = grep(/$fileonly*$/,readdir($dh));
+  my @files = grep(/\Q$fileonly\E.*$/, readdir($dh));
   closedir $dh;
 
   foreach my $mfile (@files)
