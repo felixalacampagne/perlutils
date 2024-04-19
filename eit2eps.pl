@@ -604,7 +604,7 @@ sub getDescFromNFORepo_Simple
 # Doesn't appear to matter what the parent block is called, 'seasons' would be most logical
 # This is using XML::Simple which is very hard to understand/use. It would be better to use XML::libXML
 # however this is not available at all sites and requires many dependencies to be made available and compiled.
-# XML::libXML is far to hard to obtain for offline ActiveState installations however it was possible to
+# XML::libXML is far too hard to obtain for offline ActiveState installations however it was possible to
 # obtain XML::XPath which more or less does what's needed. So this should be converted to use XPath
 sub getDescFromEPS
 {
@@ -613,7 +613,7 @@ sub getDescFromEPS
    my $epsfile = findepsfile($epsdir, $progname, 0);
    my $s = -s $epsfile;
 
-   if(-s $epsfile)  # -s exists and has size > 0
+   if(-s "$epsfile")  # -s exists and has size > 0
    {
       my $xp = XML::XPath->new(filename => $epsfile);
       my $xpcrit = "//season[show = '$progname' and id='$srcseas']/episode[id='$srceps']/description/text()";
