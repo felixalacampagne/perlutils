@@ -8,7 +8,6 @@ use File::Basename; # for fileparse
 
 # use Win32::FileOp; # cpanm --force Win32::FileOp # doesn't work
 
-my $arg0="";
 
 # NB. Win32::FileOp did not work
 # Found the following at https://www.perlmonks.org/?node_id=11153833 which is apparently
@@ -16,23 +15,24 @@ my $arg0="";
 # It probably belongs in the SCUWin package
 use Win32::API;
 
-sub FO_DELETE          () { 0x03 }
-sub FOF_SILENT         () { 0x0004 } # don't create progress/report
-sub FOF_NOCONFIRMATION () { 0x0010 } # Don't prompt the user.
-sub FOF_ALLOWUNDO      () { 0x0040 } # recycle bin instead of delete
-sub FOF_NOERRORUI      () { 0x0400 } # don't put up error UI
 
 sub sendToRecycleBin 
 {
+my $FO_DELETE          = 0x03;
+my $FOF_SILENT         = 0x0004; # don't create progress/report
+my $FOF_NOCONFIRMATION = 0x0010; # Don't prompt the user.
+my $FOF_ALLOWUNDO      = 0x0040; # recycle bin instead of delete
+my $FOF_NOERRORUI      = 0x0400; # don't put up error UI
+
   # a series of null-terminated pathnames, with a double null at the end
   my $paths = join "\0", @_, "\0";
     
   my $recycle = new Win32::API('shell32', 'SHFileOperation', 'P', 'I');
-  my $options = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI;
+  my $options = $FOF_ALLOWUNDO | $FOF_NOCONFIRMATION | $FOF_SILENT | $FOF_NOERRORUI;
     
   # for everything except paths and options, pack with Q (rather than L), since we're using 64-bit perl
   # my $opstruct = pack ('LLpLILLL', 0, FO_DELETE, $paths, 0, $options, 0, 0, 0);
-  my $opstruct = pack ('QQpQIQQQ', 0, FO_DELETE, $paths, 0, $options, 0, 0, 0);
+  my $opstruct = pack ('QQpQIQQQ', 0, $FO_DELETE, $paths, 0, $options, 0, 0, 0);
 
   return $recycle->Call($opstruct);
 }
@@ -70,10 +70,6 @@ if( @ARGV < 1)
 	exit;
 }
 
-
-$arg0 = $ARGV[0];
-#$arg1 = $ARGV[1];
+my $arg0 = $ARGV[0];
 printf "Deleting %s\n", $arg0;
 recycleFiles $arg0;
-print "Response: $!\n";
-
