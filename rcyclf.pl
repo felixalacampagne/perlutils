@@ -52,7 +52,12 @@ my ($filepat) = @_;
 my $fullpathspec = File::Spec->rel2abs($filepat);
 printf("$ME: abs path: %s\n", $fullpathspec);
 
-	my @files = glob($fullpathspec);
+	# Got to jump through hoops to get Perl to handle space in the file name
+	# and have the file name in a variable. The value passed to glob must be double quoted
+	# which doesn't happen if the glob("$fullpathspec"). Using glob(""$fullpathspec"")
+	# also doens't work and glob('"$fullpathspec"') means the variabl eis not expanded.
+	# Apparently qq double quotes its argument and allows the argument to be expanded.
+	my @files = glob(qq/"$fullpathspec"/);
   foreach my $file (@files)
   {
   	my $delpath = $file;  # File::Spec->catdir($dir, $file);
