@@ -5,7 +5,7 @@ use Data::Dumper;
 #use File::Copy;
 use File::Spec;
 use File::Basename; # for fileparse
-
+use File::Glob qw(:globally :nocase);
 # use Win32::FileOp; # cpanm --force Win32::FileOp # doesn't work
 
 
