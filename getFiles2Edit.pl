@@ -324,6 +324,7 @@ my ($dir, $file, $destdir) = @_;
 
 	$LOG->info($ME . "looking for meta files for %s\n", $fileonly);
   opendir my $dh, $dir or die "Couldn't open dir '$dir': $!";
+
   my @files = grep(/\Q$fileonly\E.*$/, readdir($dh));
   closedir $dh;
 
