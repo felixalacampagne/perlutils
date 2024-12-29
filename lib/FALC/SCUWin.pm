@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+# 07-07-2024 clean iambusy logging for -ve total wait
 # 24-04-2022 extra iambusy debug logging
 # 08-02-2022 iambusy and suspendme code moved into a Perl module for easier access from other Perl scripts.
 # 30-04-2018 Raises a custom Windows event shortly before forcing sleep. This allows a
@@ -125,12 +126,15 @@ my $startsecs = time();
       }
    
       $elapsed = (time() - $startsecs);
-      $remain = secs2dhms($totsleep - $elapsed);
-      $LOG->info("iambusy: Remaining busy time: " . $remain . "\n");
-      if($elapsed >= $totsleep)
+      if($totsleep > 0)
       {
-         $LOG->debug("iambusy: target time exceeded, no more waiting to do\n");   
-      }
+	      $remain = secs2dhms($totsleep - $elapsed);
+	      $LOG->info("iambusy: Remaining busy time: " . $remain . "\n");
+	      if($elapsed >= $totsleep)
+	      {
+	         $LOG->debug("iambusy: target time exceeded, no more waiting to do\n");   
+	      }
+    	}
    }until($elapsed >= $totsleep);
    
    $ts = time2date(time());
