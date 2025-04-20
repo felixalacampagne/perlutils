@@ -177,8 +177,7 @@ my @trackorder = ();
 # --subtitle-tracks 3 
 # --language 3:en 
 # --forced-display-flag 3:yes 
-# --track-order 0:0,0:4,0:3 	
-
+# --track-order 0:0,0:4,0:3 		 
 my $audid = ($ac3id > -1) ? $ac3id : $mp2id;
 	if($audid > -1)
 	{
