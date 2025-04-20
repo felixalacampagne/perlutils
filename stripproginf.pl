@@ -7,7 +7,7 @@ use File::Spec;
 use File::Basename;
 use File::Temp qw/ tempfile tempdir /;
 use File::Copy;
-use Date::Calc qw(Today_and_Now Delta_DHMS);
+use Date::Calc qw(Today_and_Now Delta_DHMS); # Install on strwberry with cpanm Date::Calc
 use Cwd;
 use Encode;
 use Getopt::Std;

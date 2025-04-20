@@ -1,4 +1,7 @@
 #!/usr/bin/perl
+# 20 Apr 2025 Reports hostname when testing remote directories so I can see which machine did
+#             the check - useful during the speedy-newzombie transition in case the result differ
+#             which is possible, especially if machine goes to sleep mid-check.
 # 31 Oct 2023 remove spurious quotes from command line directory/drive name
 # 28 Oct 2023 Rename log to indicate fails (for the weekly automated check of NAS)
 # 20 Oct 2023 Added mkv to monitor status of the BD backups as they are quite difficult to make
@@ -32,8 +35,8 @@ use Win32::API;
 use Win32::DriveInfo;  # Not installed by default: cpanm Win32::DriveInfo
 use Win32::Console; 
 use FALC::SCULog;
-
-use constant { VERSION => "23.10.31" };
+use Sys::Hostname;
+use constant { VERSION => "25.04.20" };
 my $LOG = FALC::SCULog->new();
 
 my $CONSOLE=Win32::Console->new;
@@ -217,15 +220,18 @@ do
          $|=1;
       }
       $|=1;
+      
    }
    
+   $LOG->info("Version:    %s\n", VERSION);
+
    if ( SkipCheck() == 1 )
    {
-      $LOG->info("Skip CHECK is SET\n");
+      $LOG->info("Skip CHECK: SET\n");
    }
    if ( SkipCalc() == 1 )
    {
-      $LOG->info("Skip CALC is SET\n");
+      $LOG->info("Skip CALC:  SET\n");
    }
    
    # This bit of perl black magic is supposed to make stdout flush 
@@ -236,17 +242,26 @@ do
    
 
    my $tab="  ";
+   
    if( -d $startdir )
    {
       if($vollbl eq "")
       {
-         $LOG->info("Processing directory: %s\n", $startdir);
+         $LOG->info("Directory:  %s\n", $startdir);
       }
       else
       {
-         $LOG->info("Processing Disk: %s directory: %s\n", $vollbl, $startdir);
+         $LOG->info("Disk:       %s directory: %s\n", $vollbl, $startdir);
       }
-      $LOG->info("Started at:                 %s\n", ymdhmsString(@starttime));
+      
+      if( isRemotePath($startdir) == 1)
+      {
+         $LOG->info("Host:       %s\n", hostname());
+      }
+      $LOG->info("Started at: %s\n", ymdhmsString(@starttime));
+      
+    
+
       processDir($startdir);
    }
    elsif( isFileForMD5($startdir) )
@@ -322,6 +337,43 @@ if(PauseOnExit() == 1)
    $|=1;  # Try to force a flush to user can see message
    pause4key("Press a key to exit . . . ");
 }
+
+sub isRemotePath
+{
+my ($path) = @_;  
+my $d = (File::Spec->splitpath($path))[0];
+   
+   # DriveType does not work with a UNC share name. Error is 'Operation not permitted'. No clue
+   # why it doesn't work and can't find anything related on Google, either for Perl or for 
+   # the underlying Windows API GetDriveType call. So simply brute force it...
+   #
+   # Eureka! Figured out why DriveType wasn't working for UNC!
+   # I copied the test for UNC from the DriveInfo::DriveType source but it didn't
+   # work so I fixed it in my test. Of course if it fails in my code then it is
+   # failing for the same reason in the DriveInfo::DriveType code which explains why
+   # it was giving uninitialized variable all the time. So copied the source and
+   # fixed the regex for the UNC and now it gives a good response for drive letter and UNC
+   # \w class does not include '-' so is not valid for UNC \\server\share which can (and does in my case) contain '-'.
+   #if( $d  =~ /^(\\\\[a-zA-Z0-9_-]+\\[a-zA-Z0-9_-]+\$?)(\\)?$/ ) # m/^\\\\.*\\.*$/ )
+   #{
+   #   $LOG->debug("Path %s looks like its UNC\n", $d);  
+   #   return 1;
+   #}
+
+   my $t = DriveType($d); # Win32::DriveInfo::DriveType($d);
+   $LOG->debug("Drive type for %s is %s\n", $d, $t);   
+   return ($t == 4) ? 1 : 0;  
+}
+
+sub DriveType ($) {
+   my $drive = shift;
+   return undef unless $drive =~ s/^([a-z])(:(\\)?)?$/$1:\\/i ||
+                       $drive =~ s/^(\\\\[a-zA-Z0-9_-]+\\[a-zA-Z0-9_-]+\$?)(\\)?$/$1\\/;
+   my $GetDriveType ||= new Win32::API("kernel32", "GetDriveType", ['P'], 'N') or return;
+   my ($lpDirectoryName) = $drive;
+   my $type = $GetDriveType->Call( $lpDirectoryName );
+}
+
 
 ########### End of main program
 # calculate the MD5
