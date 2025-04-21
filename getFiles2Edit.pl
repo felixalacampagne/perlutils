@@ -239,7 +239,7 @@ my $ts;
    $cnt = 1;
    for($cnt = 1; $cnt < 10; $cnt++)
    {
-      $unqname = File::Spec->catdir($dir, $name . "." . $cnt . $extn);
+      $unqname = File::Spec->catdir($dir, $name . "_" . $cnt . $extn);
       if( ! -f $unqname)
       {
          return $unqname;
@@ -251,7 +251,7 @@ my $ts;
    $ts = sprintf("%04d%02d%02d%02d%02d%02d", 
                         $now[5]+1900, $now[4]+1, $now[3],
                         $now[2],      $now[1],   $now[0]);
-   return File::Spec->catdir($dir, $name . "." . $ts . $extn);
+   return File::Spec->catdir($dir, $name . "_" . $ts . $extn);
 }
 
 
