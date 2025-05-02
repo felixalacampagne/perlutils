@@ -10,7 +10,7 @@ $VERSION = 1.0;
 use Devel::StackTrace;
 use Date::Calc qw(Today_and_Now Delta_DHMS);
 # This seems to work OK in the class. To use the constans to set the level
-# the syntax is like '$log->level(SCULog->LOG_DEBUG);'
+# the syntax is like '$log->level(FALC::SCULog->LOG_DEBUG);'
 use constant { LOG_SILENT => -1, LOG_ALWAYS => 10, LOG_FATAL => 20, LOG_ERROR => 30, LOG_WARN=>40 ,LOG_INFO => 50, LOG_DEBUG => 60, LOG_TRACE => 70};
 
 # This does appear to be shared between the instances of the class
