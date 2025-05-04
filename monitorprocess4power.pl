@@ -46,7 +46,7 @@ use Date::Calc qw(Today_and_Now Delta_DHMS);  # Install on strwberry with cpanm 
 use Fcntl qw !LOCK_EX LOCK_NB!;   # file lock to prevent multiple instances
 my $LOG = FALC::SCULog->new();
 
-my $VERSION = "MonitorProcess4Power v2.1 250502" ;
+my $VERSION = "MonitorProcess4Power v3.0 250504" ;
 
 $LOG->info($VERSION . "\n");
 $LOG->info( "Checking for alreaady running MonitorProcess4Power\n");
@@ -80,180 +80,102 @@ settitle("ProcessMonitor4Power");
 my $MP4PKEEPAWAKE = $ENV{'MP4PKEEPAWAKE'};
 my $MP4P="NOTRUNNING";
 my $allowed=0;
+my $vdub=0;
 
-my $runtask="";
-my $tasklist;
 
-my $vdub=0; # "NOTRUNNING";
+my $filters = '/fi "IMAGENAME ne svchost.exe" ';
+$filters = $filters . '/fi "IMAGENAME ne msedgewebview2.exe" ';
+$filters = $filters . '/fi "IMAGENAME ne GoogleDriveFS.exe" ';
 
+my $tasklistcmd = "tasklist /FO LIST /V " . $filters;
+$LOG->debug("tasklist cmd:\n$tasklistcmd\n");
+
+my @titles = ("VideoConversionInProgress", 
+              "nosleep", 
+              "ScheduledShutdownPending", 
+              "ProcMon4PowerNoSleep",
+              "01 Prjxncut",
+              "01 Cnccpf",
+              "test.title***");
+              
+my @images = ("HandBrakeCLI.exe",
+              "HandBrake.exe",
+              "mp4box.exe",
+              "ABCore.exe");
    if($MP4PKEEPAWAKE)
    {
-      $LOG->debug("Checking for custom TITLE: $MP4PKEEPAWAKE\n");
+      push(@titles, $MP4PKEEPAWAKE);
    }
-
-#rem WARNING: Running a batch file after setting TITLE can result in the batch file name
-#rem being appended to the TITLE. Seems that wildcard can be specified though!!
-#
-# NB It might be possible to use
-#rem the "LIST" format which displays each bit of information on a separate line, ie.
-#rem    Image Name:   cmd.exe
-#rem    PID:          6232
-#rem    Session Name: Console
-#rem    Session#:     1
-#rem    Mem Usage:    3,404 K
-#rem    Status:       Running
-#rem    User Name:    Chris-PC\Chris
-#rem    CPU Time:     0:00:00
-#rem    Window Title: VideoConversionInProgress
-#rem This would quite different processing but might be more reliable...
-
-do
-{
-   $vdub = 0;
    
-   # TODO: Make the titles into an array. The custom value can be simply added to the array if it is present
-   if($MP4PKEEPAWAKE)
+   do
    {
-      if($vdub != 1)
+      my $tasklist = qx{$tasklistcmd};
+      $LOG->debug("tasklist result:\n$tasklist\n");
+           
+      my $processbusy = "";
+      foreach my $title (@titles) 
       {
-         $tasklist = qx{tasklist /fi "WINDOWTITLE eq $MP4PKEEPAWAKE*" /NH /V};
-         $LOG->debug( "Title: $MP4PKEEPAWAKE: Tasklist: $tasklist\n");
-         if( ($runtask) = ($tasklist =~ m/($MP4PKEEPAWAKE)/))
+         # Must treat the titles as literals so dot "." and star "*" are not given special meaning 
+         my $qtitle = qr/\Q$title\E/;
+         my $windowtitle = qr/Window Title:\s*($qtitle( - .*)?)$/m;
+         my $runtask;
+         if( ($runtask) = ($tasklist =~ m/$windowtitle/))
          {
-            $LOG->debug( "Title:$MP4PKEEPAWAKE: $runtask is running: PREVENT sleep\n");
-            $vdub = 1;
+            $LOG->debug("Match for $windowtitle: $runtask\n");
+            $processbusy = $runtask;
+            last;
          }
-      } 
-   } 
-   
-   if($vdub != 1)
-   {  
-      my $windowtitle = "ProcMon4PowerNoSleep";
-      $tasklist = qx (tasklist /fi "WINDOWTITLE eq $windowtitle*" /NH /V);
-      $LOG->debug( "Title: $windowtitle: Tasklist: $tasklist\n");
-      if( ($runtask) = ($tasklist =~ m/($windowtitle)/))
-      {
-         $LOG->debug( "$runtask is running: PREVENT sleep\n");
-         $vdub = 1;
+         else
+         {
+            $LOG->debug("NO match for $windowtitle\n");
+         }
       }
-   }
       
-   if($vdub != 1)
-   {   
-      $tasklist = qx (tasklist /fi "WINDOWTITLE eq ScheduledShutdownPending*" /NH /V);
-      if( ($runtask) = ($tasklist =~ m/(ScheduledShutdownPending)/))
+      if( $processbusy eq "")
       {
-         $LOG->debug( "$runtask is running: PREVENT sleep\n");
-         $vdub = 1;
+         foreach my $image (@images)
+         {
+            my $qimage = qr/\Q$image\E/;
+            my $imagename = qr/Image Name:\s*($qimage)$/m;
+            my $runtask;
+            if( ($runtask) = ($tasklist =~ m/$imagename/))
+            {
+               $LOG->debug("Match for $imagename: $runtask\n");
+               $processbusy = $runtask;
+               last;
+            }
+            else
+            {
+               $LOG->debug("NO match for $imagename");
+            }      
+         }
       }
-   }
-    
-   if($vdub != 1)
-   {
-      $tasklist = qx (tasklist /fi "WINDOWTITLE eq VideoConversionInProgress*" /NH /V);
-      if( ($runtask) = ($tasklist =~ m/(VideoConversionInProgress)/))
+      
+      if($processbusy eq "")
       {
-         $LOG->debug( "$runtask is running: PREVENT sleep\n");
-         $vdub = 1;
-      }
-   }
-
-   if($vdub != 1)
-   {
-      $tasklist = qx (tasklist /fi "WINDOWTITLE eq nosleep*" /NH /V);
-      if( ($runtask) = ($tasklist =~ m/(nosleep)/))
-      {
-         $LOG->debug( "$runtask is running: PREVENT sleep\n");
-         $vdub = 1;
-      }
-   }
-
-   if($vdub != 1)
-   {
-      $tasklist = qx (tasklist /fi "WINDOWTITLE EQ 01 Cnccpf" /NH);
-      if( ($runtask) = ($tasklist =~ m/(Cnccpf)/))
-      {
-         $LOG->debug( "$runtask is running: PREVENT sleep\n");
-         $vdub = 1;
-      }
-   }
-
-   if($vdub != 1)
-   {
-      $tasklist = qx (tasklist /fi "WINDOWTITLE EQ 01 Prjxncut" /NH);
-      if( ($runtask) = ($tasklist =~ m/(Prjxncut)/))
-      {
-         $LOG->debug( "$runtask is running: PREVENT sleep\n");
-         $vdub = 1;
-      }
-   }
-
-   if($vdub != 1)
-   {
-      $tasklist = qx (tasklist /fi "IMAGENAME eq HandBrakeCLI.exe" /NH);
-      if( ($runtask) = ($tasklist =~ m/(HandBrakeCLI\.exe)/))
-      {
-         $LOG->debug( "$runtask is running: PREVENT sleep\n");
-         $vdub = 1;
-      }
-   }
-
-   if($vdub != 1)
-   {
-      $tasklist = qx (tasklist /fi "IMAGENAME eq HandBrake.exe" /NH);
-      if( ($runtask) = ($tasklist =~ m/(HandBrake\.exe)/))
-      {
-         $LOG->debug( "$runtask is running: PREVENT sleep\n");
-         $vdub = 1;
-      }
-   }
-
-   if($vdub != 1)
-   {
-      $tasklist = qx (tasklist /fi "IMAGENAME eq mp4box.exe" /NH);
-      if( ($runtask) = ($tasklist =~ m/(mp4box\.exe)/))
-      {
-         $LOG->debug( "$runtask is running: PREVENT sleep\n");
-         $vdub = 1;
-      }
-   }
-
-   if($vdub != 1)
-   {
-      $tasklist = qx (tasklist /fi "IMAGENAME eq ABCore.exe" /nh);
-      if( ($runtask) = ($tasklist =~ m/(ABCore\.exe)/))
-      {
-         $LOG->debug( "$runtask is running: PREVENT sleep\n");
-         $vdub = 1;
-      }
-   }
-
-
-   if($vdub == 0)
-   {
-      $allowed += 1;
-      $LOG->info("Power saving should be ALLOWED ($allowed)\n");
-      if($allowed >= 4)
-      {
-         $allowed = 0;
-         $tasklist = qx (tasklist /nh);
-         $LOG->info("Running tasks:\n" . $tasklist);
-         $LOG->info("Forcing sleep... nightynite\n");
-
-         suspendme(-1);
-         $LOG->info("Finished sleeping\n");
-      }
-   }
-   else
-   {
-      $LOG->info("Long running process detected: $runtask\n");
-      $LOG->info("Power saving should be PREVENTED\n");
-      $allowed = 0;
-   }
-
-   iambusy(5, -1, 0);
+         $allowed += 1;
+         $LOG->info("Power saving should be ALLOWED ($allowed)\n");
+         if($allowed >= 4)
+         {
+            $allowed = 0;
+            $tasklist = qx (tasklist /nh $filters);
+            $LOG->info("Running tasks:\n" . $tasklist);
+            $LOG->info("Forcing sleep... nightynite\n");
    
-}while($vdub < 2);
+            suspendme(-1);
+            $LOG->info("Finished sleeping\n");
+         }
+      }
+      else
+      {
+         $LOG->info("Long running process detected: $processbusy\n");
+         $LOG->info("Power saving should be PREVENTED\n");
+         $allowed = 0;
+      }
+   
+      iambusy(5, -1, 0);
+      
+   }while($vdub < 2);
 
 
 ###############################################################
