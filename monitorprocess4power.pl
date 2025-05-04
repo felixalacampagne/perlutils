@@ -3,6 +3,12 @@
 # does not report windowtitles of prompts running in a Terminal host unless it is the title
 # of the window running the tasklist command.
 
+# 04 May 2025 use a single call to tasklist with LIST format and scan the output for matching
+#             window titles and image name. TBC import the title and names from a json config file -
+#             need to work out a way that the same list is used regardless of which script actually
+#             starts the active mp4p. Probably the best place is with the lock file in Public. The
+#             external config will be used for additional titles/images to be checked for in addition
+#             to basic ones like 'VideoConversionInProgress', 'ScheduledShutdownPending' and 'ProcMon4PowerNoSleep'
 # 02 May 2025 Added the custom window title. Not very useful as it requires all
 #             starters of MP4P to have the env var set to be sure the instance actually
 #             running knows about the same value as the user of the variable. As MP4P can
