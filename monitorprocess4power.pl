@@ -2,7 +2,7 @@
 # To use MP4P the command prompt windows must be opened by the 'Console Host' as tasklist
 # does not report windowtitles of prompts running in a Terminal host unless it is the title
 # of the window running the tasklist command.
-
+ 
 # 05 May 2025 added loading of additional config from file located with the lockfile.
 # 04 May 2025 use a single call to tasklist with LIST format and scan the output for matching
 #             window titles and image name.
