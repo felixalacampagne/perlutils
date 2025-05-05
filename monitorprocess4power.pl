@@ -3,6 +3,7 @@
 # does not report windowtitles of prompts running in a Terminal host unless it is the title
 # of the window running the tasklist command.
 
+# 05 May 2025 added loading of additional config from file located with the lockfile.
 # 04 May 2025 use a single call to tasklist with LIST format and scan the output for matching
 #             window titles and image name. TBC import the title and names from a json config file -
 #             need to work out a way that the same list is used regardless of which script actually
@@ -34,14 +35,6 @@
 #    access via the context menu and right-click start menu. Nevertheless having 
 #    MonitorProcess4Power as a Perl script should make it easier to update
  
-# A single tasklist call cannot be made to check for all target processes, 
-# multiple /FI options are ANDed. Instead the complete process list could be 
-# captured and each line of the output matched against a list of titles or image names.
-# Would probably make sense to use the LIST output format if changing to this method.
-# Probably only necessary to search the whole output for 'Window Title: $title'
-# or 'Image Name:   $image' which should be pretty quick.
-# That will be for MP4P 3.0!
-# 
 use strict;
 use FindBin;           # This should find the location of this script
 use lib $FindBin::Bin . "/lib"; # This indicates to look for modules in the lib directory in script location
@@ -50,9 +43,27 @@ use FALC::SCULog;
 use FALC::SCUWin;
 use Date::Calc qw(Today_and_Now Delta_DHMS);  # Install on strwberry with cpanm Date::Calc
 use Fcntl qw !LOCK_EX LOCK_NB!;   # file lock to prevent multiple instances
+use JSON;
+use Try::Tiny; # for try...catch
+use Getopt::Std;
+
 my $LOG = FALC::SCULog->new();
 
-my $VERSION = "MonitorProcess4Power v3.0 250504" ;
+my $VERSION = "MonitorProcess4Power v3.1 250505" ;
+
+my @titles = ("VideoConversionInProgress", 
+              "nosleep", 
+              "ScheduledShutdownPending", 
+              "ProcMon4PowerNoSleep");
+              
+my @images = ("HandBrakeCLI.exe",
+              "HandBrake.exe");
+my $MP4PKEEPAWAKE = $ENV{'MP4PKEEPAWAKE'};
+
+   if($MP4PKEEPAWAKE)
+   {
+      push(@titles, $MP4PKEEPAWAKE);
+   }
 
 $LOG->info($VERSION . "\n");
 $LOG->info( "Checking for alreaady running MonitorProcess4Power\n");
@@ -68,51 +79,49 @@ $LOG->info( "Checking for alreaady running MonitorProcess4Power\n");
 # sucks since the public folder could get moved elsewhere.
 # Will rely on the PUBLIC env.var instead....         
 my $docs    = $ENV{'PUBLIC'};
-$docs = $docs . "\\mp4pwr";
+   $docs = $docs . "\\mp4pwr";
+   $LOG->debug( "Public directory is: $docs\n");
+   make_path $docs or print "IGNORING: Failed to create $docs: $!\n";
+
+my $xtracfgfile = $docs . "\\ProcessMonitor4Power.json";
 my $lockfile = $docs . "\\ProcessMonitor4Power.lock";
-$LOG->debug( "Public directory is: $docs\n");
-make_path $docs or print "IGNORING: Failed to create $docs: $!\n";
-open my $file, ">", $lockfile or die "Failed to open $lockfile: $!"; 
-if ( ! flock($file, LOCK_EX|LOCK_NB) )
-{
-   $LOG->info( "Another instance is already running: exiting\n");
-   exit(0);
-}
-$LOG->info( "Looks like it's just us!\n");
-# $LOG->level(FALC::SCULog->LOG_DEBUG);
 
-settitle("ProcessMonitor4Power");
+my %opts;
+   getopts('g', \%opts);
 
-my $MP4PKEEPAWAKE = $ENV{'MP4PKEEPAWAKE'};
-my $MP4P="NOTRUNNING";
-my $allowed=0;
-my $vdub=0;
+   if( $opts{"g"} == 1)
+   {
+      # Generate an example additional custom config file
+      genDefaultConfig($xtracfgfile . ".default");
+      exit(0);
+   }
+   
+   open my $file, ">", $lockfile or die "Failed to open $lockfile: $!"; 
+   if ( ! flock($file, LOCK_EX|LOCK_NB) )
+   {
+      $LOG->info( "Another instance is already running: exiting\n");
+      exit(0);
+   }
+   $LOG->info( "Looks like it's just us!\n");
+   # $LOG->level(FALC::SCULog->LOG_DEBUG);
+    
+   settitle("ProcessMonitor4Power");
+
+my $allowed = 0;
+my $vdub = 0;
 
 
 my $filters = '/fi "IMAGENAME ne svchost.exe" ';
-$filters = $filters . '/fi "IMAGENAME ne msedgewebview2.exe" ';
-$filters = $filters . '/fi "IMAGENAME ne GoogleDriveFS.exe" ';
+   $filters = $filters . '/fi "IMAGENAME ne msedgewebview2.exe" ';
+   $filters = $filters . '/fi "IMAGENAME ne GoogleDriveFS.exe" ';
 
 my $tasklistcmd = "tasklist /FO LIST /V " . $filters;
-$LOG->debug("tasklist cmd:\n$tasklistcmd\n");
-
-my @titles = ("VideoConversionInProgress", 
-              "nosleep", 
-              "ScheduledShutdownPending", 
-              "ProcMon4PowerNoSleep",
-              "01 Prjxncut",
-              "01 Cnccpf",
-              "test.title***");
-              
-my @images = ("HandBrakeCLI.exe",
-              "HandBrake.exe",
-              "mp4box.exe",
-              "ABCore.exe");
-   if($MP4PKEEPAWAKE)
-   {
-      push(@titles, $MP4PKEEPAWAKE);
-   }
+   $LOG->debug("tasklist cmd:\n$tasklistcmd\n");
    
+   loadConfig($xtracfgfile);
+   $LOG->debug("Window titles: @titles\n");
+   $LOG->debug("Image names: @images\n");
+
    do
    {
       my $tasklist = qx{$tasklistcmd};
@@ -183,7 +192,6 @@ my @images = ("HandBrakeCLI.exe",
       
    }while($vdub < 2);
 
-
 ###############################################################
 ###############################################################
 ####                    #######################################
@@ -191,8 +199,99 @@ my @images = ("HandBrakeCLI.exe",
 ####                    #######################################
 ###############################################################
 ###############################################################
-__DATA__
 
+sub savetext
+{
+my ($path, $data) = @_;
+
+   unlink "$path";
+   if(open(my $output, ">", $path) )
+   {
+      binmode $output, ":unix:encoding(UTF-8)";
+      print $output $data;
+      close($output);
+   }
+   else
+   {
+      warn "Failed to save file: " . $path . " : " . $! . "\n";
+   }
+}
+
+sub loadtext 
+{
+   my ($file) = @_;
+   
+   my $fulfile = File::Spec->rel2abs($file);
+   my $file_content = "";
+   if( -f $fulfile )
+   {
+      open my $fh, '<', $fulfile or die "Can't open file $fulfile: $!";
+        
+      binmode $fh, ":encoding(utf-8)";   
+      
+      
+      read $fh, $file_content, -s $fh;
+   }
+   return $file_content
+}
+
+sub genDefaultConfig
+{
+my ($file) = @_;
+my %bootstrapconfig = ();
+   
+   $bootstrapconfig{'WindowTitles'}  = \@titles;
+   $bootstrapconfig{'ImageNames'}  = \@images;
+   my $json = to_json(\%bootstrapconfig, {utf8 => 1, pretty => 1, canonical => 1});
+   
+   my $fulfile = File::Spec->rel2abs($file);
+      
+   savetext($fulfile, $json);     
+}
+
+# Config is json file containing two arrays, eg.
+#    {
+#       "ImageNames" : [
+#          "image.exe"
+#       ],
+#       "WindowTitles" : [
+#          "title"   ]
+#    }
+sub loadConfig
+{
+my ($file) = @_;  
+
+   my $json = loadtext($file);
+   if( $json ne "")
+   {
+      try
+      {   
+      my $mapref = decode_json($json) or return;
+      my %config = %{$mapref};
+      my @xtras;
+
+         @xtras = @{$config{'WindowTitles'}};
+         push(@titles, @xtras);
+         
+         @xtras = @{$config{'ImageNames'}};
+         push(@images, @xtras);
+      }
+      catch
+      {
+         $LOG->info("loadConfig failed: $_\n");
+      }
+   }
+}
+
+###############################################################
+###############################################################
+####                    #######################################
+#### End functions      #######################################
+####                    #######################################
+###############################################################
+###############################################################
+
+__DATA__
 
 
 
