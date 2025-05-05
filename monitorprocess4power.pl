@@ -56,6 +56,13 @@ my @images = ("HandBrakeCLI.exe",
               "HandBrake.exe");
 my $MP4PKEEPAWAKE = $ENV{'MP4PKEEPAWAKE'};
 
+my %opts;
+   getopts('gd', \%opts);
+   if( $opts{"d"} == 1)
+   {
+      $LOG->level(FALC::SCULog->LOG_DEBUG);
+   }
+   
    if($MP4PKEEPAWAKE)
    {
       push(@titles, $MP4PKEEPAWAKE);
@@ -80,11 +87,6 @@ my $docs    = $ENV{'PUBLIC'};
    make_path $docs or print "IGNORING: Failed to create $docs: $!\n";
 
 my $xtracfgfile = $docs . "\\ProcessMonitor4Power.json";
-my $lockfile = $docs . "\\ProcessMonitor4Power.lock";
-
-my %opts;
-   getopts('g', \%opts);
-
    if( $opts{"g"} == 1)
    {
       # Generate an example additional custom config file
@@ -92,6 +94,7 @@ my %opts;
       exit(0);
    }
    
+my $lockfile = $docs . "\\ProcessMonitor4Power.lock";
    open my $file, ">", $lockfile or die "Failed to open $lockfile: $!"; 
    if ( ! flock($file, LOCK_EX|LOCK_NB) )
    {
@@ -99,7 +102,7 @@ my %opts;
       exit(0);
    }
    $LOG->info( "Looks like it's just us!\n");
-   $LOG->level(FALC::SCULog->LOG_DEBUG);
+   
     
    settitle("ProcessMonitor4Power");
 
