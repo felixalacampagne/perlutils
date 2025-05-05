@@ -99,7 +99,7 @@ my %opts;
       exit(0);
    }
    $LOG->info( "Looks like it's just us!\n");
-   # $LOG->level(FALC::SCULog->LOG_DEBUG);
+   $LOG->level(FALC::SCULog->LOG_DEBUG);
     
    settitle("ProcessMonitor4Power");
 
@@ -128,7 +128,7 @@ my $tasklistcmd = "tasklist /FO LIST /V " . $filters;
       {
          # Must treat the titles as literals so dot "." and star "*" are not given special meaning 
          my $qtitle = qr/\Q$title\E/;
-         my $windowtitle = qr/Window Title:\s*($qtitle( - .*)?)$/m;
+         my $windowtitle = qr/Window Title:\s*($qtitle.*)$/m;
          my $runtask;
          if( ($runtask) = ($tasklist =~ m/$windowtitle/))
          {
