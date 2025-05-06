@@ -93,7 +93,7 @@ my $xtracfgfile = $docs . "\\ProcessMonitor4Power.json";
       genDefaultConfig($xtracfgfile . ".default");
       exit(0);
    }
-   
+  
 my $lockfile = $docs . "\\ProcessMonitor4Power.lock";
    open my $file, ">", $lockfile or die "Failed to open $lockfile: $!"; 
    if ( ! flock($file, LOCK_EX|LOCK_NB) )
@@ -115,7 +115,7 @@ my $filters = '/fi "IMAGENAME ne svchost.exe" ';
    $filters = $filters . '/fi "IMAGENAME ne GoogleDriveFS.exe" ';
 
 my $tasklistcmd = "tasklist /FO LIST /V " . $filters;
-   $LOG->debug("tasklist cmd:\n$tasklistcmd\n");
+   $LOG->info("tasklist cmd:\n$tasklistcmd\n");
    
    loadConfig($xtracfgfile);
    $LOG->debug("Window titles: @titles\n");
