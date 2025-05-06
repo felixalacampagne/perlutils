@@ -45,7 +45,7 @@ use Getopt::Std;
 
 my $LOG = FALC::SCULog->new();
 
-my $VERSION = "MonitorProcess4Power v3.1 250505" ;
+my $VERSION = "MonitorProcess4Power v3.1 250506";
 
 my @titles = ("VideoConversionInProgress", 
               "nosleep", 
