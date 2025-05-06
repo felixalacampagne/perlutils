@@ -3,6 +3,7 @@
 # does not report windowtitles of prompts running in a Terminal host unless it is the title
 # of the window running the tasklist command.
 
+# 06 May 2025 refactor
 # 05 May 2025 added loading of additional config from file located with the lockfile.
 # 04 May 2025 use a single call to tasklist with LIST format and scan the output for matching
 #             window titles and image name.
@@ -81,12 +82,15 @@ $LOG->info( "Checking for alreaady running MonitorProcess4Power\n");
 # Could use my_home and go up and down to Public with a relative path but that just
 # sucks since the public folder could get moved elsewhere.
 # Will rely on the PUBLIC env.var instead....         
-my $docs    = $ENV{'PUBLIC'};
-   $docs = $docs . "\\mp4pwr";
-   $LOG->debug( "Public directory is: $docs\n");
-   make_path $docs or print "IGNORING: Failed to create $docs: $!\n";
+my $cfgdir    = $ENV{'PUBLIC'};
+   $cfgdir = $cfgdir . "\\mp4pwr";
+   if( ! -d $cfgdir)
+   {
+      $LOG->debug( "Config directory is: $cfgdir\n");
+      make_path $cfgdir or print "IGNORING: Failed to create $cfgdir: $!\n";
+   }
 
-my $xtracfgfile = $docs . "\\ProcessMonitor4Power.json";
+my $xtracfgfile = $cfgdir . "\\ProcessMonitor4Power.json";
    if( $opts{"g"} == 1)
    {
       # Generate an example additional custom config file
@@ -94,32 +98,23 @@ my $xtracfgfile = $docs . "\\ProcessMonitor4Power.json";
       exit(0);
    }
   
-my $lockfile = $docs . "\\ProcessMonitor4Power.lock";
-   open my $file, ">", $lockfile or die "Failed to open $lockfile: $!"; 
-   if ( ! flock($file, LOCK_EX|LOCK_NB) )
-   {
-      $LOG->info( "Another instance is already running: exiting\n");
-      exit(0);
-   }
-   $LOG->info( "Looks like it's just us!\n");
+my $lockfh = mustBeSingleton($cfgdir); # Must keep the lock handle otherwise the file is closed and the lock released.
    
-    
+   $LOG->info( "Looks like it's just us!\n");
+
    settitle("ProcessMonitor4Power");
 
-my $allowed = 0;
-my $vdub = 0;
-
+   loadConfig($xtracfgfile);
+   $LOG->debug("Window titles: @titles\n");
+   $LOG->debug("Image names: @images\n");
 
 my $filters = '/fi "IMAGENAME ne svchost.exe" ';
    $filters = $filters . '/fi "IMAGENAME ne msedgewebview2.exe" ';
    $filters = $filters . '/fi "IMAGENAME ne GoogleDriveFS.exe" ';
-
 my $tasklistcmd = "tasklist /FO LIST /V " . $filters;
    $LOG->info("tasklist cmd:\n$tasklistcmd\n");
-   
-   loadConfig($xtracfgfile);
-   $LOG->debug("Window titles: @titles\n");
-   $LOG->debug("Image names: @images\n");
+ 
+my $allowed = 0;
 
    do
    {
@@ -127,42 +122,12 @@ my $tasklistcmd = "tasklist /FO LIST /V " . $filters;
       $LOG->debug("tasklist result:\n$tasklist\n");
            
       my $processbusy = "";
-      foreach my $title (@titles) 
-      {
-         # Must treat the titles as literals so dot "." and star "*" are not given special meaning 
-         my $qtitle = qr/\Q$title\E/;
-         my $windowtitle = qr/Window Title:\s*($qtitle.*)$/m;
-         my $runtask;
-         if( ($runtask) = ($tasklist =~ m/$windowtitle/))
-         {
-            $LOG->debug("Match for $windowtitle: $runtask\n");
-            $processbusy = $runtask;
-            last;
-         }
-         else
-         {
-            $LOG->debug("NO match for $windowtitle\n");
-         }
-      }
+      
+      $processbusy = scanForLineMatch($tasklist, "Window Title", \@titles);
       
       if( $processbusy eq "")
       {
-         foreach my $image (@images)
-         {
-            my $qimage = qr/\Q$image\E/;
-            my $imagename = qr/Image Name:\s*($qimage)$/m;
-            my $runtask;
-            if( ($runtask) = ($tasklist =~ m/$imagename/))
-            {
-               $LOG->debug("Match for $imagename: $runtask\n");
-               $processbusy = $runtask;
-               last;
-            }
-            else
-            {
-               $LOG->debug("NO match for $imagename");
-            }      
-         }
+         $processbusy = scanForLineMatch($tasklist, "Image Name", \@images);
       }
       
       if($processbusy eq "")
@@ -189,7 +154,7 @@ my $tasklistcmd = "tasklist /FO LIST /V " . $filters;
    
       iambusy(5, -1, 0);
       
-   }while($vdub < 2);
+   } while(1);
 
 ###############################################################
 ###############################################################
@@ -198,6 +163,37 @@ my $tasklistcmd = "tasklist /FO LIST /V " . $filters;
 ####                    #######################################
 ###############################################################
 ###############################################################
+
+# tasklist    - task list in LIST format to be scanned
+# prefix      - label at start of the line containing the pattern to scan for, eg. 'Window Title', 'Image Name'
+# patternsref - reference to array of patterns to scan for
+#
+# returns     - matching process details, empty string if none found
+sub scanForLineMatch
+{
+my ($tasklist, $prefix, $patternsref) = @_;
+my @patterns = @$patternsref;
+my $processbusy = "";
+   
+   foreach my $pattern (@patterns) 
+   {
+      # Must treat the patterns as literals so dot "." and star "*" are not given special meaning 
+      my $qpattern = qr/\Q$pattern\E/;
+      my $linepattern = qr/$prefix:\s*($qpattern.*)$/m;
+      my $runtask;
+      if( ($runtask) = ($tasklist =~ m/$linepattern/))
+      {
+         $LOG->debug("Match for $linepattern: $runtask\n");
+         $processbusy = $runtask;
+         last;
+      }
+      else
+      {
+         $LOG->debug("NO match for $linepattern\n");
+      }
+   }
+   return $processbusy;
+}
 
 sub savetext
 {
@@ -248,6 +244,18 @@ my %bootstrapconfig = ();
    savetext($fulfile, $json);     
 }
 
+sub mustBeSingleton
+{
+my ($configdir) = @_;  
+my $lockfile = $configdir . "\\ProcessMonitor4Power.lock";
+   open my $file, ">", $lockfile or die "Failed to open $lockfile: $!"; 
+   if ( ! flock($file, LOCK_EX|LOCK_NB) )
+   {
+      $LOG->info( "Another instance is already running: exiting\n");
+      exit(0);
+   } 
+   return $file;
+}
 # Config is json file containing two arrays, eg.
 #    {
 #       "ImageNames" : [
@@ -291,7 +299,6 @@ my ($file) = @_;
 ###############################################################
 
 __DATA__
-
 
 
 
