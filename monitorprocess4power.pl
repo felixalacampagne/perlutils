@@ -198,6 +198,8 @@ $notify_ps1 = $notify_ps1 . '$description = ' . $desc . ';';
 $notify_ps1 = $notify_ps1 . '$title = ' . $title . ';';
 $notify_ps1 = $notify_ps1 . 'Add-Type -AssemblyName System.Windows.Forms;';
 $notify_ps1 = $notify_ps1 . '$notifyIcon = New-Object System.Windows.Forms.NotifyIcon;';
+# %SystemRoot%\System32\SHELL32.dll 7x4 =28
+# $Icon = [System.IconExtractor]::Extract($SourceEXEFilePath, $IconIndexNo, $true)
 $notify_ps1 = $notify_ps1 . '$notifyIcon.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon(' . $iconfile . ');';
 $notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipText = $description;';
 $notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipTitle = $title;';
