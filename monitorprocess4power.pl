@@ -43,10 +43,11 @@ use Fcntl qw !LOCK_EX LOCK_NB!;   # file lock to prevent multiple instances
 use JSON;
 use Try::Tiny; # for try...catch
 use Getopt::Std;
+use Term::ReadKey;
 
 my $LOG = FALC::SCULog->new();
 
-my $VERSION = "MonitorProcess4Power v3.1 250506";
+my $VERSION = "MonitorProcess4Power v3.2 250511";
 
 my @titles = ("VideoConversionInProgress", 
               "nosleep", 
@@ -139,10 +140,16 @@ my $allowed = 0;
             $allowed = 0;
             $tasklist = qx (tasklist /nh $filters);
             $LOG->info("Running tasks:\n" . $tasklist);
-            $LOG->info("Forcing sleep... nightynite\n");
-   
-            suspendme(-1);
-            $LOG->info("Finished sleeping\n");
+            sleepWarning();
+            my $abort = pause4key("Press SPACEBAR to abort sleep...");
+            $LOG->info("Key pressed: [$abort]\n");
+            if($abort ne " ")
+            {
+               $LOG->info("Forcing sleep... nightynite\n");
+      
+               suspendme(1);  # Use -1 for immediate when abort option is added above
+               $LOG->info("Finished sleeping\n");
+            }
          }
       }
       else
@@ -163,6 +170,31 @@ my $allowed = 0;
 ####                    #######################################
 ###############################################################
 ###############################################################
+sub pause4key
+{
+my $msg = shift;
+   $|=1;
+   print $msg;
+   ReadMode 'cbreak';
+
+   my $key = ReadKey(120);
+   ReadMode 'normal';
+   print "\n";
+   return $key;
+}
+
+# This requires that the powershell script 'notify.ps1' is available
+# It might be possible to do this entirely from the command line
+# to avoid the dependency on this script.
+sub sleepWarning
+{
+my $notify = '"powershell.exe" -noLogo -ExecutionPolicy unrestricted -command "notify.ps1"';
+my $desc = " 'WARNING: System is about to go to sleep'";
+my $title = " 'MonitorProcess4Power'";
+$notify = $notify . $desc . $title;
+my $res = qx ($notify );
+
+}
 
 # tasklist    - task list in LIST format to be scanned
 # prefix      - label at start of the line containing the pattern to scan for, eg. 'Window Title', 'Image Name'
