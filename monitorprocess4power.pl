@@ -135,7 +135,7 @@ my $allowed = 0;
       {
          $allowed += 1;
          $LOG->info("Power saving should be ALLOWED ($allowed)\n");
-         if($allowed >= 4)
+         if($allowed >= 0)
          {
             $allowed = 0;
             $tasklist = qx (tasklist /nh $filters);
@@ -188,11 +188,27 @@ my $msg = shift;
 # to avoid the dependency on this script.
 sub sleepWarning
 {
-my $notify = '"powershell.exe" -noLogo -ExecutionPolicy unrestricted -command "notify.ps1"';
+my $pwrshelcmd = '"powershell.exe" -noLogo -ExecutionPolicy unrestricted -command ';
 my $desc = " 'WARNING: System is about to go to sleep'";
 my $title = " 'MonitorProcess4Power'";
-$notify = $notify . $desc . $title;
-my $res = qx ($notify );
+my $iconfile = "'C:\\Windows\\System32\\notepad.exe'";
+my $notify_ps1= '';
+
+$notify_ps1 = $notify_ps1 . '$description = ' . $desc . ';';
+$notify_ps1 = $notify_ps1 . '$title = ' . $title . ';';
+$notify_ps1 = $notify_ps1 . 'Add-Type -AssemblyName System.Windows.Forms;';
+$notify_ps1 = $notify_ps1 . '$notifyIcon = New-Object System.Windows.Forms.NotifyIcon;';
+$notify_ps1 = $notify_ps1 . '$notifyIcon.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon(' . $iconfile . ');';
+$notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipText = $description;';
+$notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipTitle = $title;';
+$notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Warning;';
+$notify_ps1 = $notify_ps1 . '$notifyIcon.Visible = $true;';
+$notify_ps1 = $notify_ps1 . '$notifyIcon.ShowBalloonTip(15000);';
+
+
+$pwrshelcmd = $pwrshelcmd . '"' . $notify_ps1 . '"';
+$LOG->info("pwoershell commend:\n$pwrshelcmd\n");
+my $res = qx ($pwrshelcmd );
 
 }
 
@@ -330,6 +346,36 @@ my ($file) = @_;
 ###############################################################
 ###############################################################
 
+# The notify.ps1 script
+
+## WARNING! MUST have Notifications enabled: Settings -> System -> Notifications
+## WARNING! Notifications can be blocked by do not disturb settings...
+#
+#$description = $args[0];
+#$title = $args[1];
+## Add System.Windows.Forms assembly
+#Add-Type -AssemblyName System.Windows.Forms
+#
+## Create a NotifyIcon object
+#$notifyIcon = New-Object System.Windows.Forms.NotifyIcon
+#
+## Set the icon
+#$notifyIcon.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon("C:\Windows\System32\notepad.exe")
+#
+## Set the notification text
+#$notifyIcon.BalloonTipText = $description
+#
+## Set the notification title
+#$notifyIcon.BalloonTipTitle = $title
+#
+## Set the icon type (optional)
+#$notifyIcon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Warning
+#
+## Set the notification to visible
+#$notifyIcon.Visible = $true
+#
+## Show the notification (duration in milliseconds)
+#$notifyIcon.ShowBalloonTip(15000)
 __DATA__
 
 
