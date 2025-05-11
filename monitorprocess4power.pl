@@ -135,7 +135,7 @@ my $allowed = 0;
       {
          $allowed += 1;
          $LOG->info("Power saving should be ALLOWED ($allowed)\n");
-         if($allowed >= 0)
+         if($allowed >= 4)
          {
             $allowed = 0;
             $tasklist = qx (tasklist /nh $filters);
@@ -207,7 +207,7 @@ $notify_ps1 = $notify_ps1 . '$notifyIcon.ShowBalloonTip(15000);';
 
 
 $pwrshelcmd = $pwrshelcmd . '"' . $notify_ps1 . '"';
-$LOG->info("pwoershell commend:\n$pwrshelcmd\n");
+$LOG->debug("pwoershell commend:\n$pwrshelcmd\n");
 my $res = qx ($pwrshelcmd );
 
 }
