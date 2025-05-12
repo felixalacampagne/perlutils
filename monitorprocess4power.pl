@@ -135,7 +135,7 @@ my $allowed = 0;
       {
          $allowed += 1;
          $LOG->info("Power saving should be ALLOWED ($allowed)\n");
-         if($allowed >= 4)
+         if($allowed >= 0)
          {
             $allowed = 0;
             $tasklist = qx (tasklist /nh $filters);
@@ -191,25 +191,27 @@ sub sleepWarning
 my $pwrshelcmd = '"powershell.exe" -noLogo -ExecutionPolicy unrestricted -command ';
 my $desc = " 'WARNING: System is about to go to sleep'";
 my $title = " 'MonitorProcess4Power'";
-my $iconfile = "'C:\\Windows\\System32\\notepad.exe'";
 my $notify_ps1= '';
 
 $notify_ps1 = $notify_ps1 . '$description = ' . $desc . ';';
 $notify_ps1 = $notify_ps1 . '$title = ' . $title . ';';
-$notify_ps1 = $notify_ps1 . 'Add-Type -AssemblyName System.Windows.Forms;';
-$notify_ps1 = $notify_ps1 . '$notifyIcon = New-Object System.Windows.Forms.NotifyIcon;';
-# %SystemRoot%\System32\SHELL32.dll 7x4 =28
-# $Icon = [System.IconExtractor]::Extract($SourceEXEFilePath, $IconIndexNo, $true)
-$notify_ps1 = $notify_ps1 . '$notifyIcon.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon(' . $iconfile . ');';
-$notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipText = $description;';
-$notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipTitle = $title;';
-$notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Warning;';
-$notify_ps1 = $notify_ps1 . '$notifyIcon.Visible = $true;';
-$notify_ps1 = $notify_ps1 . '$notifyIcon.ShowBalloonTip(15000);';
+$notify_ps1 = $notify_ps1 . loaddata();
+
+
+#$notify_ps1 = $notify_ps1 . 'Add-Type -AssemblyName System.Windows.Forms;';
+#$notify_ps1 = $notify_ps1 . '$notifyIcon = New-Object System.Windows.Forms.NotifyIcon;';
+## %SystemRoot%\System32\SHELL32.dll 7x4 =28
+## $Icon = [System.IconExtractor]::Extract($SourceEXEFilePath, $IconIndexNo, $true)
+#$notify_ps1 = $notify_ps1 . '$notifyIcon.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon(' . $iconfile . ');';
+#$notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipText = $description;';
+#$notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipTitle = $title;';
+#$notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Warning;';
+#$notify_ps1 = $notify_ps1 . '$notifyIcon.Visible = $true;';
+#$notify_ps1 = $notify_ps1 . '$notifyIcon.ShowBalloonTip(15000);';
 
 
 $pwrshelcmd = $pwrshelcmd . '"' . $notify_ps1 . '"';
-$LOG->debug("pwoershell commend:\n$pwrshelcmd\n");
+$LOG->debug("powershell commend:\n$pwrshelcmd\n");
 my $res = qx ($pwrshelcmd );
 
 }
@@ -340,6 +342,20 @@ my ($file) = @_;
    }
 }
 
+sub loaddata 
+{
+   my $file_content = "";
+
+   while (my $line = <DATA>)
+   {
+      chomp $line;  # remove line breaks
+      $file_content = $file_content . $line; 
+   }
+   $file_content =~ s/"/\\"/g;
+   # $file_content =~ s/'/\\'/g; only double quotes need to be escaped
+   return $file_content
+}
+
 ###############################################################
 ###############################################################
 ####                    #######################################
@@ -348,38 +364,62 @@ my ($file) = @_;
 ###############################################################
 ###############################################################
 
-# The notify.ps1 script
+# The content of the DATA section is a powershell script for
+# displaying a Windows notification popup. This is the only
+# script based way I have found to do it. 
+#
+# Maybe try Win32::GUI::NotifyIcon. It is not unavailble for the
+# ActiveState installation (ie. no download capability) 
+#
+# The script is taken from 
+# notify.ps but with all comments removed as these cannot be
+# used in a single line command.
+# I spent alot of time trying to get the powerbutton icon from
+# shell32.dll displayed in the notification only to find that 
+# the icon used the first time the notification is raised 
+# is always applied for subsequent occurrences. Additionally
+# it is only one icon per application, and the application is
+# powershell in this case. So The notepad icon is now displayed
+# for any powershell based notifications. M$ have truely lost the
+# plot.
 
-## WARNING! MUST have Notifications enabled: Settings -> System -> Notifications
-## WARNING! Notifications can be blocked by do not disturb settings...
-#
-#$description = $args[0];
-#$title = $args[1];
-## Add System.Windows.Forms assembly
-#Add-Type -AssemblyName System.Windows.Forms
-#
-## Create a NotifyIcon object
-#$notifyIcon = New-Object System.Windows.Forms.NotifyIcon
-#
-## Set the icon
-#$notifyIcon.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon("C:\Windows\System32\notepad.exe")
-#
-## Set the notification text
-#$notifyIcon.BalloonTipText = $description
-#
-## Set the notification title
-#$notifyIcon.BalloonTipTitle = $title
-#
-## Set the icon type (optional)
-#$notifyIcon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Warning
-#
-## Set the notification to visible
-#$notifyIcon.Visible = $true
-#
-## Show the notification (duration in milliseconds)
-#$notifyIcon.ShowBalloonTip(15000)
 __DATA__
+$iconPath = "$env:SystemRoot\system32\shell32.dll";
+$iconIndex = 7 * 4 - 1;
+Add-Type -AssemblyName System.Windows.Forms;
+$notifyIcon = New-Object System.Windows.Forms.NotifyIcon;
+add-type -typeDefinition '
 
+using System;
+using System.Runtime.InteropServices;
 
+public class Shell32_Extract {
 
+  [DllImport(
+     "Shell32.dll",
+      EntryPoint        = "ExtractIconExW",
+      CharSet           =  CharSet.Unicode,
+      ExactSpelling     =  true,
+      CallingConvention =  CallingConvention.StdCall)
+  ]
 
+   public static extern int ExtractIconEx(
+      string lpszFile          ,
+      int    iconIndex         ,
+      out    IntPtr phiconLarge,
+      out    IntPtr phiconSmall,
+      int    nIcons
+  );
+
+}
+';
+[System.IntPtr] $phiconSmall = 0;
+[System.IntPtr] $phiconLarge = 0;
+$nofIconsExtracted = [Shell32_Extract]::ExtractIconEx($iconPath, $iconIndex, [ref] $phiconLarge, [ref] $phiconSmall, 1);
+$iconSmall = [System.Drawing.Icon]::FromHandle($phiconSmall);
+$notifyIcon.Icon = $iconSmall;
+$notifyIcon.BalloonTipText = $description;
+$notifyIcon.BalloonTipTitle = $title;
+$notifyIcon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Warning;
+$notifyIcon.Visible = $true;
+$notifyIcon.ShowBalloonTip(15000);
