@@ -382,6 +382,39 @@ sub loaddata
 # powershell in this case. So The notepad icon is now displayed
 # for any powershell based notifications. M$ have truely lost the
 # plot.
+# To avoid the powershell stuff I would really like to use
+# Win32::GUI::NotifyIcon even though it is not available in
+# all installations. Alas examples of it's use are few and far between
+# but this is my guess so far..
+
+
+#use Win32::API;
+#use Win32::GUI;
+#my $icon = new Win32::GUI::Icon("anicon.ico"); # TBD where this comes from!
+
+# This MIGHT work for the icon. Tried to do same for Shell_NotifyIconA but it didn't work 
+# int ExtractIconExA(LPCTSTR lpszFile, int iconIndex, HICON *hIconLarge, HICON *hIconSmall, int nIcons)
+# From # According to https://metacpan.org/pod/Win32::API the DLL function import is more like
+#my $exticon = new Win32::API::More('shell32', 'ExtractIconExA', "PiNNi", "i");
+# As params3 and 4 are pointer I think P must be used
+#my $exticon =  Win32::API::More->new('shell32', 'ExtractIconExA', "PiPPi", "i");
+#my $exticon = new Win32::API::More('shell32', 'int ExtractIconExA(LPCTSTR lpszFile, int iconIndex, HICON *hIconLarge, HICON *hIconSmall, int nIcons)'); 
+##my $largeIcon = 0;
+#my $smallIcon = 0;
+#my $iconfile = 'C:\\windows\\system32\\shell32.dll';
+#my $iconindex = 7 * 4 -1;
+#my $result = $exticon->Call($iconfile, $iconindex, $largeIcon, $smallIcon, 1); 
+#
+#$icon = $smallIcon;
+#
+#my notifyicon = new Win32::GUI::NotifyIcon(PARENT,
+#         -icon => $icon,
+#         -balloon => 1,
+#         -balloon_tip => "the message text up to 200 chars",
+#         -balloon_title => "Notification Title",
+#         -balloon_timeout => 15000);
+##The -balloon=1 option should cause the notification to be displayed.
+##I don't know what to use for 'PARENT' - best to try 0      
 
 __DATA__
 $iconPath = "$env:SystemRoot\system32\shell32.dll";
