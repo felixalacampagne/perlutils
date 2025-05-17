@@ -47,7 +47,7 @@ use Term::ReadKey;
 
 my $LOG = FALC::SCULog->new();
 
-my $VERSION = "MonitorProcess4Power v3.2 250511";
+my $VERSION = "MonitorProcess4Power v3.2 250517";
 
 my @titles = ("VideoConversionInProgress", 
               "nosleep", 
@@ -183,9 +183,7 @@ my $msg = shift;
    return $key;
 }
 
-# This requires that the powershell script 'notify.ps1' is available
-# It might be possible to do this entirely from the command line
-# to avoid the dependency on this script.
+# This requires that the powershell script is enabled
 sub sleepWarning
 {
 my $pwrshelcmd = '"powershell.exe" -noLogo -ExecutionPolicy unrestricted -command ';
@@ -196,19 +194,6 @@ my $notify_ps1= '';
 $notify_ps1 = $notify_ps1 . '$description = ' . $desc . ';';
 $notify_ps1 = $notify_ps1 . '$title = ' . $title . ';';
 $notify_ps1 = $notify_ps1 . loaddata();
-
-
-#$notify_ps1 = $notify_ps1 . 'Add-Type -AssemblyName System.Windows.Forms;';
-#$notify_ps1 = $notify_ps1 . '$notifyIcon = New-Object System.Windows.Forms.NotifyIcon;';
-## %SystemRoot%\System32\SHELL32.dll 7x4 =28
-## $Icon = [System.IconExtractor]::Extract($SourceEXEFilePath, $IconIndexNo, $true)
-#$notify_ps1 = $notify_ps1 . '$notifyIcon.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon(' . $iconfile . ');';
-#$notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipText = $description;';
-#$notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipTitle = $title;';
-#$notify_ps1 = $notify_ps1 . '$notifyIcon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Warning;';
-#$notify_ps1 = $notify_ps1 . '$notifyIcon.Visible = $true;';
-#$notify_ps1 = $notify_ps1 . '$notifyIcon.ShowBalloonTip(15000);';
-
 
 $pwrshelcmd = $pwrshelcmd . '"' . $notify_ps1 . '"';
 $LOG->debug("powershell commend:\n$pwrshelcmd\n");
@@ -368,53 +353,8 @@ sub loaddata
 # displaying a Windows notification popup. This is the only
 # script based way I have found to do it. 
 #
-# Maybe try Win32::GUI::NotifyIcon. It is not unavailble for the
-# ActiveState installation (ie. no download capability) 
-#
-# The script is taken from 
-# notify.ps but with all comments removed as these cannot be
-# used in a single line command.
-# I spent alot of time trying to get the powerbutton icon from
-# shell32.dll displayed in the notification only to find that 
-# the icon used the first time the notification is raised 
-# is always applied for subsequent occurrences. Additionally
-# it is only one icon per application, and the application is
-# powershell in this case. So The notepad icon is now displayed
-# for any powershell based notifications. M$ have truely lost the
-# plot.
-# To avoid the powershell stuff I would really like to use
-# Win32::GUI::NotifyIcon even though it is not available in
-# all installations. Alas examples of it's use are few and far between
-# but this is my guess so far..
-
-
-#use Win32::API;
-#use Win32::GUI;
-#my $icon = new Win32::GUI::Icon("anicon.ico"); # TBD where this comes from!
-
-# This MIGHT work for the icon. Tried to do same for Shell_NotifyIconA but it didn't work 
-# int ExtractIconExA(LPCTSTR lpszFile, int iconIndex, HICON *hIconLarge, HICON *hIconSmall, int nIcons)
-# From # According to https://metacpan.org/pod/Win32::API the DLL function import is more like
-#my $exticon = new Win32::API::More('shell32', 'ExtractIconExA', "PiNNi", "i");
-# As params3 and 4 are pointer I think P must be used
-#my $exticon =  Win32::API::More->new('shell32', 'ExtractIconExA', "PiPPi", "i");
-#my $exticon = new Win32::API::More('shell32', 'int ExtractIconExA(LPCTSTR lpszFile, int iconIndex, HICON *hIconLarge, HICON *hIconSmall, int nIcons)'); 
-##my $largeIcon = 0;
-#my $smallIcon = 0;
-#my $iconfile = 'C:\\windows\\system32\\shell32.dll';
-#my $iconindex = 7 * 4 -1;
-#my $result = $exticon->Call($iconfile, $iconindex, $largeIcon, $smallIcon, 1); 
-#
-#$icon = $smallIcon;
-#
-#my notifyicon = new Win32::GUI::NotifyIcon(PARENT,
-#         -icon => $icon,
-#         -balloon => 1,
-#         -balloon_tip => "the message text up to 200 chars",
-#         -balloon_title => "Notification Title",
-#         -balloon_timeout => 15000);
-##The -balloon=1 option should cause the notification to be displayed.
-##I don't know what to use for 'PARENT' - best to try 0      
+# Win32::GUI::NotifyIcon looked promising but nothing I tried worked
+# and there are no examples of how to use it for showing notifications.
 
 __DATA__
 $iconPath = "$env:SystemRoot\system32\shell32.dll";
