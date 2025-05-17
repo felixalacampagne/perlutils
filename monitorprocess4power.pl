@@ -38,12 +38,15 @@ use lib $FindBin::Bin . "/lib"; # This indicates to look for modules in the lib 
 use File::Path qw( make_path );
 use FALC::SCULog;
 use FALC::SCUWin;
-use Date::Calc qw(Today_and_Now Delta_DHMS);  # Install on strwberry with cpanm Date::Calc
+use Date::Calc qw(Today_and_Now Delta_DHMS);  # cpanm Date::Calc
 use Fcntl qw !LOCK_EX LOCK_NB!;   # file lock to prevent multiple instances
 use JSON;
 use Try::Tiny; # for try...catch
 use Getopt::Std;
 use Term::ReadKey;
+
+use Win32::API;
+use Win32::GUI; # cpanm Win32::GUI
 
 my $LOG = FALC::SCULog->new();
 
@@ -135,7 +138,7 @@ my $allowed = 0;
       {
          $allowed += 1;
          $LOG->info("Power saving should be ALLOWED ($allowed)\n");
-         if($allowed >= 4)
+         if($allowed >= 0)
          {
             $allowed = 0;
             $tasklist = qx (tasklist /nh $filters);
@@ -183,8 +186,58 @@ my $msg = shift;
    return $key;
 }
 
-# This requires that the powershell script is enabled
+# Finally figured out how to get a notification using Win32::GUI::NotifyIcon. 
+# It seems it MUST have a Win32::GUI::Window object as the parent. It appears
+# not to matter that the object is not visible or that it is created from
+# a console window. Trying to use an icon from shell32 does not appear to
+# be working - I'm guessing that a windows icon handle is not the right
+# sort of parameter to use, but Win32::GUI::Icon can only use a file name.
+# If the -icon parameter is omitted then the notification does not appear.
+# During testing the desired icon did show up but weirdly only after two or 
+# three consecutive notification popups, so maybe the handle is OK. With
+# the PS script the icon didn't change after the first use so is pretty
+# useless anyway. The -balloon_icon doesn't have any effect, ie. no
+# Warning icon is displayed, but that is the same for the PS script..
 sub sleepWarning
+{
+my $desc = "WARNING: System is about to be put to sleep!";
+my $title = "MonitorProcess4Power";
+my $icon; # = new Win32::GUI::Icon("anicon.ico"); # TBD where this comes from!
+
+
+my $exticon = new Win32::API::More('shell32', 'int ExtractIconExA(LPCTSTR lpszFile, int iconIndex, HICON *hIconLarge, HICON *hIconSmall, int nIcons)'); 
+my $largeIcon = 0;
+my $smallIcon = 0;
+my $iconfile = 'C:\\windows\\system32\\shell32.dll';
+my $iconindex = 7 * 4 - 1;
+my $result = $exticon->Call($iconfile, $iconindex, $largeIcon, $smallIcon, 1); 
+
+$icon = $smallIcon;
+my %options = (      
+         -icon => $icon,
+         -tip => $title, 
+         -balloon => 1,
+         -balloon_tip => $desc,
+         -balloon_title => $title,
+         -ballon_icon => "Warn",
+         -balloon_timeout => "10000"
+         );
+
+my $PARENT = Win32::GUI::Window->new(
+        -title       => "Notification",
+        -left        => 0,
+        -size        => [10,10],
+        -resizable   => 0,
+        -maximizebox => 0,
+        -dialogui    => 1,
+);
+     
+$PARENT->AddNotifyIcon(%options);
+undef $PARENT;
+}
+
+# This requires that the powershell script is enabled
+sub sleepWarningPS
 {
 my $pwrshelcmd = '"powershell.exe" -noLogo -ExecutionPolicy unrestricted -command ';
 my $desc = " 'WARNING: System is about to go to sleep'";
