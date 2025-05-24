@@ -206,6 +206,11 @@ my $msg = shift;
 # by setting NIF_REALTIME (0x00000040) in the NOTIFYICONDATA.uFlags
 # but this is not supported by Win32::GUI::NotifyIcon.
 # (see https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-notifyicondataa)
+# Could possibly fix this by creating a custom version of Win32::GUI with additional options
+# see GUI_Options.cpp::ParseNotifyIconOptions.cpp (https://metacpan.org/release/KMX/Win32-GUI-1.14/source/GUI_Options.cpp)
+# but I have no idea how I would install the custom version.
+# The source can be cloned with git clone git://git.code.sf.net/p/perl-win32-gui/git perl-win32-gui-git
+# (from https://sourceforge.net/p/perl-win32-gui/git/ci/master/tree/)
 sub sleepWarning
 {
 my $desc = "WARNING: System is about to be put to sleep!";
