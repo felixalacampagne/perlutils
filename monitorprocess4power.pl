@@ -3,6 +3,9 @@
 # does not report windowtitles of prompts running in a Terminal host unless it is the title
 # of the window running the tasklist command.
 
+# 24 May 2025 added warning notification popup using Win32::GUI. The notifications queue
+#             when the system is unattended but it is not possible to configure this with
+#             Win32::GUI.
 # 06 May 2025 refactor
 # 05 May 2025 added loading of additional config from file located with the lockfile.
 # 04 May 2025 use a single call to tasklist with LIST format and scan the output for matching
@@ -198,6 +201,11 @@ my $msg = shift;
 # the PS script the icon didn't change after the first use so is pretty
 # useless anyway. The -balloon_icon doesn't have any effect, ie. no
 # Warning icon is displayed, but that is the same for the PS script..
+#
+# NB. It would be possible to prevent the queuing of notifications
+# by setting NIF_REALTIME (0x00000040) in the NOTIFYICONDATA.uFlags
+# but this is not supported by Win32::GUI::NotifyIcon.
+# (see https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-notifyicondataa)
 sub sleepWarning
 {
 my $desc = "WARNING: System is about to be put to sleep!";
@@ -219,7 +227,7 @@ my %options = (
          -balloon => 1,
          -balloon_tip => $desc,
          -balloon_title => $title,
-         -ballon_icon => "Warn",
+         -ballon_icon => "warning",
          -balloon_timeout => "10000"
          );
 
@@ -406,8 +414,8 @@ sub loaddata
 # displaying a Windows notification popup. This is the only
 # script based way I have found to do it. 
 #
-# Win32::GUI::NotifyIcon looked promising but nothing I tried worked
-# and there are no examples of how to use it for showing notifications.
+# replaced by Win32::GUI::NotifyIcon which I finally got working.
+
 
 __DATA__
 $iconPath = "$env:SystemRoot\system32\shell32.dll";
