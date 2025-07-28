@@ -36,7 +36,7 @@ use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML        
 use open ":std", ":encoding(UTF-8)"; # Tell Perl UTF-8 is being used.
-print "EIT2EPS v3.8 20231104a\n";
+print "EIT2EPS v3.8 20231104b\n";
 
 
 # Kludge to provide a command to create the folder artwork for a new program
