@@ -44,7 +44,7 @@ print "EIT2EPS v3.8 20231104a\n";
 my $gARTCMDTMPL=$ENV{ARTCMD} . "";
 
 # This is the default value, it can be overridden from the command line
-my $NFOREPOPATH="\\\\MYCLOUD-36LUHY\\Public\\Videos\\mp4\\ZZnforepo"; # "\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
+my $NFOREPOPATH="\\\\NASUG\\public\\videos\\mp4\\ZZnforepo"; # "\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
 
 # script is intended for use with filename which have the date/channel info removed
 # this is to allow the EPS line to be accumulated into a .eps file with the name
