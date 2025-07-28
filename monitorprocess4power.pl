@@ -3,6 +3,9 @@
 # does not report windowtitles of prompts running in a Terminal host unless it is the title
 # of the window running the tasklist command.
 
+# 24 May 2025 added warning notification popup using Win32::GUI. The notifications queue
+#             when the system is unattended but it is not possible to configure this with
+#             Win32::GUI.
 # 06 May 2025 refactor
 # 05 May 2025 added loading of additional config from file located with the lockfile.
 # 04 May 2025 use a single call to tasklist with LIST format and scan the output for matching
@@ -38,15 +41,19 @@ use lib $FindBin::Bin . "/lib"; # This indicates to look for modules in the lib 
 use File::Path qw( make_path );
 use FALC::SCULog;
 use FALC::SCUWin;
-use Date::Calc qw(Today_and_Now Delta_DHMS);  # Install on strwberry with cpanm Date::Calc
+use Date::Calc qw(Today_and_Now Delta_DHMS);  # cpanm Date::Calc
 use Fcntl qw !LOCK_EX LOCK_NB!;   # file lock to prevent multiple instances
 use JSON;
 use Try::Tiny; # for try...catch
 use Getopt::Std;
+use Term::ReadKey;
+
+use Win32::API;
+use Win32::GUI; # cpanm Win32::GUI --force
 
 my $LOG = FALC::SCULog->new();
 
-my $VERSION = "MonitorProcess4Power v3.1 250506";
+my $VERSION = "MonitorProcess4Power v3.2 250517";
 
 my @titles = ("VideoConversionInProgress", 
               "nosleep", 
@@ -139,10 +146,16 @@ my $allowed = 0;
             $allowed = 0;
             $tasklist = qx (tasklist /nh $filters);
             $LOG->info("Running tasks:\n" . $tasklist);
-            $LOG->info("Forcing sleep... nightynite\n");
-   
-            suspendme(-1);
-            $LOG->info("Finished sleeping\n");
+            sleepWarning();
+            my $abort = pause4key("Press SPACEBAR to abort sleep...");
+            $LOG->info("Key pressed: [$abort]\n");
+            if($abort ne " ")
+            {
+               $LOG->info("Forcing sleep... nightynite\n");
+      
+               suspendme(1);  # Use -1 for immediate when abort option is added above
+               $LOG->info("Finished sleeping\n");
+            }
          }
       }
       else
@@ -163,6 +176,96 @@ my $allowed = 0;
 ####                    #######################################
 ###############################################################
 ###############################################################
+sub pause4key
+{
+my $msg = shift;
+   $|=1;
+   print $msg;
+   ReadMode 'cbreak';
+
+   my $key = ReadKey(120);
+   ReadMode 'normal';
+   print "\n";
+   return $key;
+}
+
+# Finally figured out how to get a notification using Win32::GUI::NotifyIcon. 
+# It seems it MUST have a Win32::GUI::Window object as the parent. It appears
+# not to matter that the object is not visible or that it is created from
+# a console window. Trying to use an icon from shell32 does not appear to
+# be working - I'm guessing that a windows icon handle is not the right
+# sort of parameter to use, but Win32::GUI::Icon can only use a file name.
+# If the -icon parameter is omitted then the notification does not appear.
+# During testing the desired icon did show up but weirdly only after two or 
+# three consecutive notification popups, so maybe the handle is OK. With
+# the PS script the icon didn't change after the first use so is pretty
+# useless anyway. The -balloon_icon doesn't have any effect, ie. no
+# Warning icon is displayed, but that is the same for the PS script..
+#
+# NB. It would be possible to prevent the queuing of notifications
+# by setting NIF_REALTIME (0x00000040) in the NOTIFYICONDATA.uFlags
+# but this is not supported by Win32::GUI::NotifyIcon.
+# (see https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-notifyicondataa)
+# Could possibly fix this by creating a custom version of Win32::GUI with additional options
+# see GUI_Options.cpp::ParseNotifyIconOptions.cpp (https://metacpan.org/release/KMX/Win32-GUI-1.14/source/GUI_Options.cpp)
+# but I have no idea how I would install the custom version.
+# The source can be cloned with git clone git://git.code.sf.net/p/perl-win32-gui/git perl-win32-gui-git
+# (from https://sourceforge.net/p/perl-win32-gui/git/ci/master/tree/)
+sub sleepWarning
+{
+my $desc = "WARNING: System is about to be put to sleep!";
+my $title = "MonitorProcess4Power";
+my $icon; # = new Win32::GUI::Icon("anicon.ico"); # TBD where this comes from!
+
+
+my $exticon = new Win32::API::More('shell32', 'int ExtractIconExA(LPCTSTR lpszFile, int iconIndex, HICON *hIconLarge, HICON *hIconSmall, int nIcons)'); 
+my $largeIcon = 0;
+my $smallIcon = 0;
+my $iconfile = 'C:\\windows\\system32\\shell32.dll';
+my $iconindex = 7 * 4 - 1;
+my $result = $exticon->Call($iconfile, $iconindex, $largeIcon, $smallIcon, 1); 
+
+$icon = $smallIcon;
+my %options = (      
+         -icon => $icon,
+         -tip => $title, 
+         -balloon => 1,
+         -balloon_tip => $desc,
+         -balloon_title => $title,
+         -ballon_icon => "warning",
+         -balloon_timeout => "10000"
+         );
+
+my $PARENT = Win32::GUI::Window->new(
+        -title       => "Notification",
+        -left        => 0,
+        -size        => [10,10],
+        -resizable   => 0,
+        -maximizebox => 0,
+        -dialogui    => 1,
+);
+     
+$PARENT->AddNotifyIcon(%options);
+undef $PARENT;
+}
+
+# This requires that the powershell script is enabled
+sub sleepWarningPS
+{
+my $pwrshelcmd = '"powershell.exe" -noLogo -ExecutionPolicy unrestricted -command ';
+my $desc = " 'WARNING: System is about to go to sleep'";
+my $title = " 'MonitorProcess4Power'";
+my $notify_ps1= '';
+
+$notify_ps1 = $notify_ps1 . '$description = ' . $desc . ';';
+$notify_ps1 = $notify_ps1 . '$title = ' . $title . ';';
+$notify_ps1 = $notify_ps1 . loaddata();
+
+$pwrshelcmd = $pwrshelcmd . '"' . $notify_ps1 . '"';
+$LOG->debug("powershell commend:\n$pwrshelcmd\n");
+my $res = qx ($pwrshelcmd );
+
+}
 
 # tasklist    - task list in LIST format to be scanned
 # prefix      - label at start of the line containing the pattern to scan for, eg. 'Window Title', 'Image Name'
@@ -290,6 +393,20 @@ my ($file) = @_;
    }
 }
 
+sub loaddata 
+{
+   my $file_content = "";
+
+   while (my $line = <DATA>)
+   {
+      chomp $line;  # remove line breaks
+      $file_content = $file_content . $line; 
+   }
+   $file_content =~ s/"/\\"/g;
+   # $file_content =~ s/'/\\'/g; only double quotes need to be escaped
+   return $file_content
+}
+
 ###############################################################
 ###############################################################
 ####                    #######################################
@@ -298,8 +415,50 @@ my ($file) = @_;
 ###############################################################
 ###############################################################
 
+# The content of the DATA section is a powershell script for
+# displaying a Windows notification popup. This is the only
+# script based way I have found to do it. 
+#
+# replaced by Win32::GUI::NotifyIcon which I finally got working.
+
+
 __DATA__
+$iconPath = "$env:SystemRoot\system32\shell32.dll";
+$iconIndex = 7 * 4 - 1;
+Add-Type -AssemblyName System.Windows.Forms;
+$notifyIcon = New-Object System.Windows.Forms.NotifyIcon;
+add-type -typeDefinition '
 
+using System;
+using System.Runtime.InteropServices;
 
+public class Shell32_Extract {
 
+  [DllImport(
+     "Shell32.dll",
+      EntryPoint        = "ExtractIconExW",
+      CharSet           =  CharSet.Unicode,
+      ExactSpelling     =  true,
+      CallingConvention =  CallingConvention.StdCall)
+  ]
 
+   public static extern int ExtractIconEx(
+      string lpszFile          ,
+      int    iconIndex         ,
+      out    IntPtr phiconLarge,
+      out    IntPtr phiconSmall,
+      int    nIcons
+  );
+
+}
+';
+[System.IntPtr] $phiconSmall = 0;
+[System.IntPtr] $phiconLarge = 0;
+$nofIconsExtracted = [Shell32_Extract]::ExtractIconEx($iconPath, $iconIndex, [ref] $phiconLarge, [ref] $phiconSmall, 1);
+$iconSmall = [System.Drawing.Icon]::FromHandle($phiconSmall);
+$notifyIcon.Icon = $iconSmall;
+$notifyIcon.BalloonTipText = $description;
+$notifyIcon.BalloonTipTitle = $title;
+$notifyIcon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Warning;
+$notifyIcon.Visible = $true;
+$notifyIcon.ShowBalloonTip(15000);

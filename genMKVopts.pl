@@ -123,53 +123,53 @@ select STDOUT;
 sub generateMKVOptions
 {
 my $ME="generateMKVOptions: "; # function name for log output
-my ($optout) = @_;	
+my ($optout) = @_;   
 my $vidid = -1;
 my $subid = -1;
 my $ac3id = -1;
 my $mp2id = -1;
 
 
-	foreach my $trackref (@gTracks)
-	{	
-		my %track = %{$trackref};
-		my $dbg = Dumper %track;	
-		$LOG->trace("$ME Track:\n". $dbg . "\n");
-		my $type = $track{'type'};
-		my $trackid = $track{'id'};
-		$LOG->debug("$ME Type: " . $type . " ID: " . $trackid . "\n");
-		if($type eq 'audio')
-		{
-			if(	$track{'codec'} eq 'AC-3')
-			{
-				$ac3id = $trackid;
-				$LOG->debug("$ME AC3: $ac3id\n");
-			}
-			elsif($track{'codec'} eq 'MP2')
-			{
-				my $lang = $track{'properties'}{'language'};
-				$LOG->debug("$ME MP2 lang: $lang\n");
-				if($lang ne 'nar')
-				{
-					$mp2id = $trackid;	
-					$LOG->debug("$ME MP2: $mp2id\n");
-				}
-			}
-		}
-		elsif($type eq 'subtitles')
-		{
-			if(	$track{'codec'} eq 'SubRip/SRT')
-			{
-				$subid = $trackid;
-				$LOG->debug("$ME Subs: $subid\n");
-			}      		
-		}
-		elsif($type eq 'video')
-		{
-				$vidid = $trackid;
-				$LOG->debug("$ME Video: $vidid\n");
-		}
-	}
+   foreach my $trackref (@gTracks)
+   {  
+      my %track = %{$trackref};
+      my $dbg = Dumper %track;   
+      $LOG->trace("$ME Track:\n". $dbg . "\n");
+      my $type = $track{'type'};
+      my $trackid = $track{'id'};
+      $LOG->debug("$ME Type: " . $type . " ID: " . $trackid . "\n");
+      if($type eq 'audio')
+      {
+         if(   $track{'codec'} eq 'AC-3')
+         {
+            $ac3id = $trackid;
+            $LOG->debug("$ME AC3: $ac3id\n");
+         }
+         elsif($track{'codec'} eq 'MP2')
+         {
+            my $lang = $track{'properties'}{'language'};
+            $LOG->debug("$ME MP2 lang: $lang\n");
+            if($lang ne 'nar')
+            {
+               $mp2id = $trackid;   
+               $LOG->debug("$ME MP2: $mp2id\n");
+            }
+         }
+      }
+      elsif($type eq 'subtitles')
+      {
+         if(   $track{'codec'} eq 'SubRip/SRT')
+         {
+            $subid = $trackid;
+            $LOG->debug("$ME Subs: $subid\n");
+         }           
+      }
+      elsif($type eq 'video')
+      {
+            $vidid = $trackid;
+            $LOG->debug("$ME Video: $vidid\n");
+      }
+   }
 my @mkvopts = ();
 my @trackorder = ();
 # --audio-tracks 4 
@@ -177,36 +177,55 @@ my @trackorder = ();
 # --subtitle-tracks 3 
 # --language 3:en 
 # --forced-display-flag 3:yes 
-# --track-order 0:0,0:4,0:3 		 
+# --track-order 0:0,0:4,0:3       
 my $audid = ($ac3id > -1) ? $ac3id : $mp2id;
-	if($audid > -1)
-	{
-		push(@mkvopts, "--audio-tracks");
-		push(@mkvopts, "$audid");
-		push(@mkvopts, "--language");
-		push(@mkvopts, "$audid:en");
-		
-		push(@trackorder, "0:$audid");
-	}
-	
-	if($subid > -1)
-	{
-		# To add a 1s subtitle delay use: --sync $subid:1000
-   	push(@mkvopts, "--subtitle-tracks");
-   	push(@mkvopts, "$subid");
-		push(@mkvopts, "--language");
-		push(@mkvopts, "$subid:en");
-		push(@mkvopts, "--forced-display-flag");
-		push(@mkvopts, "$subid:yes");
-		push(@trackorder, "0:$subid");
-	}
-  
-  if((scalar(@trackorder) > 0) && ($vidid > -1))
-  {
-  	my $tord = "0:$vidid," . join(',', @trackorder);
-  	push(@mkvopts, "--track-order");
-  	push(@mkvopts, "$tord");
-  }
+
+   # Try putting video AFTER audio to avoid the stuttering at start of HD/AC3 videos
+   # Normally video comes first.
+   # Fingers crossed the join respects the push order (it does).
+   # Stuttering seemed even worse with video after audio so it video is back
+   # to the start.
+   # Unless it needs to come after everything???
+   # Try video at the end: no improvement so back to the start
+   # Using a shorter cluster-length seems to get the stuttering over with
+   # sooner and the drops are less pronounced when the video is at the start.
+   # Still no clue why Kodi does it - must try it on the GoogleTV to see
+   # if it is specifc to the Sony.
+   # Behaviour on Shield is different. There is an breif audio dropout at the start
+   # and also missing video while the audio is playing. The video resumes
+   # after around 5s - this is probably something to do with the edit.
+   push(@trackorder, "0:$vidid");
+   
+   if($audid > -1)
+   {
+      push(@mkvopts, "--audio-tracks");
+      push(@mkvopts, "$audid");
+      push(@mkvopts, "--language");
+      push(@mkvopts, "$audid:en");
+      
+      push(@trackorder, "0:$audid");
+   }
+   
+
+   if($subid > -1)
+   {
+      # To add a 1s subtitle delay use: --sync $subid:1000
+      push(@mkvopts, "--subtitle-tracks");
+      push(@mkvopts, "$subid");
+      push(@mkvopts, "--language");
+      push(@mkvopts, "$subid:en");
+      push(@mkvopts, "--forced-display-flag");
+      push(@mkvopts, "$subid:yes");
+      push(@trackorder, "0:$subid");
+   }
+   
+   if((scalar(@trackorder) > 0) && ($vidid > -1))
+   {
+      # my $tord = "0:$vidid," . join(',', @trackorder);
+      my $tord = join(',', @trackorder);
+      push(@mkvopts, "--track-order");
+      push(@mkvopts, "$tord");
+   }
    
    my $json = to_json(\@mkvopts, {utf8 => 1, pretty => 1, canonical => 1});
    savetext($optout, $json); 
@@ -236,12 +255,12 @@ my $line = "";
 sub settitle
 {
 my $title = shift;
-	# Must keep original title at start as it is required to prevent sleep
-	if($title ne "")
-	{
-		$title =': ' . $title;
-	}
-	$CONSOLE->Title($CONSOLESTARTTILE . $title);
+   # Must keep original title at start as it is required to prevent sleep
+   if($title ne "")
+   {
+      $title =': ' . $title;
+   }
+   $CONSOLE->Title($CONSOLESTARTTILE . $title);
 }
 
 sub savetext
@@ -316,6 +335,6 @@ my ($file) = @_;
 my $json = loadtext($file);
 my $mapref = decode_json($json);
 my %identity = %{$mapref};
-	$LOG->debug("Load JSON content of file $file\n");
+   $LOG->debug("Load JSON content of file $file\n");
   @gTracks = @{$identity{'tracks'}};
 }
