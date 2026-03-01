@@ -1,3 +1,13 @@
+# WARNING: WIndows 11 has broken the functionality to keep the system from sleeping.
+# ie. 'iambuay' which uses SetThreadExecutionState with ES_SYSTEM_REQUIRED no longer
+# stops the system from sleeping in the middle of long running tasks. This means
+# that Windows Sleep and Hibernate MUST NOT be used in order to avoid the long running
+# tasks from being interrupted. This probably explains why minnie is going to sleep
+# even though there is a 'no sleep' running which should be keeping it awake so I
+# can connect to the VPN. Forking M$ shafts the world again by forcing countless numbers
+# of systems to stay on permanently because they cannot be relied on to complete
+# long running tasks! 
+
 # WARNING: Windows 11 Terminal has broken the 'TITLE' test for running processes. 
 # To use MP4P the command prompt windows must be opened by the 'Console Host' as tasklist
 # does not report windowtitles of prompts running in a Terminal host unless it is the title
@@ -143,7 +153,12 @@ my $allowed = 0;
          $LOG->info("Power saving should be ALLOWED ($allowed)\n");
          if($allowed >= 4)
          {
-            $allowed = 0;
+            # TODO: check again after waiting for the key as I'm pretty sure
+            # a long running process got started while waiting for the key and
+            # the system went to sleep and didn't wake for more than a day with the
+            # result that the task was killed by the scheduler (there was no 
+            # log entry for this though).    
+            $allowed = 0; 
             $tasklist = qx (tasklist /nh $filters);
             $LOG->info("Running tasks:\n" . $tasklist);
             sleepWarning();

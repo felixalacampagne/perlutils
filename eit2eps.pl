@@ -36,7 +36,7 @@ use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML        
 use open ":std", ":encoding(UTF-8)"; # Tell Perl UTF-8 is being used.
-print "EIT2EPS v3.8 20231104a\n";
+print "EIT2EPS v3.8 20250720a\n";
 
 
 # Kludge to provide a command to create the folder artwork for a new program
@@ -44,7 +44,7 @@ print "EIT2EPS v3.8 20231104a\n";
 my $gARTCMDTMPL=$ENV{ARTCMD} . "";
 
 # This is the default value, it can be overridden from the command line
-my $NFOREPOPATH="\\\\MYCLOUD-36LUHY\\Public\\Videos\\mp4\\ZZnforepo"; # "\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
+my $NFOREPOPATH="\\\\NASUG\\public\\videos\\mp4\\ZZnforepo"; # "\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
 
 # script is intended for use with filename which have the date/channel info removed
 # this is to allow the EPS line to be accumulated into a .eps file with the name
