@@ -256,6 +256,17 @@ my $progdesc = "";
 		
 }
 
+
+sub normalize
+{
+my ($str) = @_;
+
+   $str =~ s/\s+//;   # Remove all whitespace
+   $str = lc $str;    # make lowercase
+   
+   return $str;
+}
+
 sub sanitize
 {
 my ($str) = @_;
@@ -737,13 +748,14 @@ my $uid = "9876";
    
    $nfocont .= "<season>" . $season . "</season>\n";
    $nfocont .= "<episode>" . $id . "</episode>\n";   
-   
+   # Use md5 of nfo created so far to create the uid - excluding 'plot' should make
+   # it reproducible for a given show/episode
+   $uid = md5sum($nfocont);
+      
    $nfocont .= "<plot>" . xmlencode($desc) . "</plot>\n";
    
-   # Use md5 of nfo created so far to create an id in case this is what causes Kodi to keep
-   # the programmes in the list after they have been deleted.
-   $uid = md5sum($nfocont);
-   $nfocont .= "<uniqueid type=\"mytvshows\" default=\"true\">" . $uid ."</uniqueid>\n";
+   # 'type' = tvdb is required by the watchlist plugin used for syncing plays across multiple Kodis
+   $nfocont .= "<uniqueid type=\"tvdb\" default=\"true\">" . $uid ."</uniqueid>\n";
 
 
    # program yy-mm-dd episode title
@@ -765,11 +777,10 @@ my $uid = "9876";
    return $nfopath;
 }
 
-
 sub createFolderNFO
 {
 my ($show, $nfopath) = @_;
-
+my $uid = '1234';
    # If path contains a '.ignore' file then do not create the folder NFO. '.ignore' is
    # used by 'Emby' mediaserver 
   unless(-e File::Spec->catdir($nfopath, ".ignore"))
@@ -777,7 +788,12 @@ my ($show, $nfopath) = @_;
       my $nfocont = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n";
       $nfocont .= "<tvshow>\n";
       $nfocont .= "<title>" . xmlencode($show) . "</title>\n";
-      $nfocont .= "<uniqueid type=\"mytvshows\" default=\"true\">9876</uniqueid>\n";
+      
+      # Use xmlencoded values for consistency with old nfos which have been updated
+      $uid = md5sum(normalize(xmlencode($show)));
+      
+      # 'type' = tvdb is required by the watchlist plugin used for syncing plays across multiple Kodis
+      $nfocont .= "<uniqueid type=\"tvdb\" default=\"true\">" . $uid ."</uniqueid>\n";
       $nfocont .= "</tvshow>\n";
 
       $nfopath = File::Spec->catdir($nfopath, "tvshow.nfo");
@@ -987,4 +1003,52 @@ my $fh;
    }  
    
    return $digest;
+}
+
+sub updateFolderNFO_UID
+{
+my ($nfofile) = @_;
+my $nfo = ''
+my $show = '';
+my $uid = ''.
+
+   # For now simply handle as a string - could handle as XML as for updateeps but seems way to complex for this case
+   $nfo = loadtext($nfofile);
+   
+   # Extract 'title' tag
+   if( $nfo =~ m/<title>(.*)</title>/ ) 
+   {
+      $show = $1;
+   }
+   else
+   {
+      print "ERROR: No title tag found in ". $nfofile;
+      return;
+   }
+   # calculate uid
+   $uid = md5sum(normalize($show)); # Value is already xmlencoded
+   $uid = "<uniqueid type=\"tvdb\" default=\"true\">" . $uid ."</uniqueid>";
+   
+   # replace 'uniqueid' tag OR insert it before 'tvshow' closing.
+   my $qeuid = /\Q$uid\E/;
+   $nfo ~= s/<uniqueid .*</uniqueid>/$qeuid/
+   
+   # save as string
+   safebackup($nfofile);
+   saveutf8xfile($nfofile, $nfo);
+}
+
+sub loadtext 
+{
+   my ($file) = @_;
+   
+   my $fulfile = File::Spec->rel2abs($file);
+   
+   open my $fh, '<', $fulfile or die "Can't open file $fulfile: $!";
+     
+   binmode $fh, ":encoding(utf-8)";   
+   my $file_content;
+   
+   read $fh, $file_content, -s $fh;
+   return $file_content
 }
