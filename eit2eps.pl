@@ -37,8 +37,7 @@ use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML
 use open ":std", ":encoding(UTF-8)"; # Tell Perl UTF-8 is being used.
-print "EIT2EPS v3.9 202603021346\n";
-
+print "EIT2EPS v3.9 202603021433\n";
 
 # Kludge to provide a command to create the folder artwork for a new program
 # the command should contain placeholders for the program name (#PROGNAME#) and the program directory (#PROGDIR#)
@@ -1081,7 +1080,7 @@ my $uid = '';
       return;
    }
    # calculate uid
-   $uid = md5sum($TVSHOWSALT + normalize($show)); # Value is already xmlencoded
+   $uid = md5sum($TVSHOWSALT . normalize($show)); # Value is already xmlencoded
    $uid = "<uniqueid type=\"tvdb\" default=\"true\">" . $uid ."</uniqueid>\n";
 
    # replace 'uniqueid' tag OR insert it before 'tvshow' closing - easier to remove if exists then insert at end - tag order is not important
