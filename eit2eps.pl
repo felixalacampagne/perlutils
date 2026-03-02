@@ -1,8 +1,9 @@
 #!/usr/bin/perl
+# 03-Mar-2026 calculate dummy tvdb uid for watchlist, update existing nfos with new uid.
 # 04-Nov-2023 backup the eps file to avoid loosing manually entered details when file test
 #             operators are giving strange results.
 # 13-Aug-2023 v3_8 always write new nfo/eps with sanitized description. nfo in repo is not modified.
-# 29-Jul-2023 v3_7 option to process current directory using .eit files if present 
+# 29-Jul-2023 v3_7 option to process current directory using .eit files if present
 #             otherwise as for single video files.
 # 02-Jul-2023 v3_6 handle multiple files on command line.
 #             make arg processing into a function.
@@ -18,7 +19,7 @@
 #             and do not create nfos in directory containing a '.ignore' file, unless it is the staging directory.
 # 02-Jul-2020 v3_1 handles non EIT files: creates show directory, show nfo, adds dummy entry to folder.eps - no file.nfo
 # 30-Jun-2020 v3_0 support for Kodi media center: create one directory per show, create tvshow and episode .nfo files
-# 01-Dec-2018 v2_5 On a roll!! Implemented the searching for epss in progname dir, drama/folder.eps 
+# 01-Dec-2018 v2_5 On a roll!! Implemented the searching for epss in progname dir, drama/folder.eps
 # 30-Nov-2018 v2_0 Creates/updates valid "<prog name>.eps" files in the output directory
 
 # NB Can also be used to create prog directory and artwork when no .eit file is available, just use
@@ -34,9 +35,9 @@ use File::Copy;
 use Digest::MD5;
 use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
-use XML::Twig;    # Only used to pretty print the output XML        
+use XML::Twig;    # Only used to pretty print the output XML
 use open ":std", ":encoding(UTF-8)"; # Tell Perl UTF-8 is being used.
-print "EIT2EPS v3.8 20250720a\n";
+print "EIT2EPS v3.9 202603021346\n";
 
 
 # Kludge to provide a command to create the folder artwork for a new program
@@ -45,6 +46,8 @@ my $gARTCMDTMPL=$ENV{ARTCMD} . "";
 
 # This is the default value, it can be overridden from the command line
 my $NFOREPOPATH="\\\\NASUG\\public\\videos\\mp4\\ZZnforepo"; # "\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
+
+my $TVSHOWSALT = "CPATVSHOWS";
 
 # script is intended for use with filename which have the date/channel info removed
 # this is to allow the EPS line to be accumulated into a .eps file with the name
@@ -61,7 +64,7 @@ my $gNfoRepoPath = $NFOREPOPATH;
 my $eitfile;
 my @filelist;
 my %opts;
-getopts('ai:d:n:r:l?', \%opts);
+getopts('ai:d:n:r:u:l?', \%opts);
 
 
 if( $opts{"?"} )
@@ -87,7 +90,13 @@ if( $opts{"r"})
    $gNfoRepoPath = $opts{"r"};
 }
 
+if( $opts{"u"} )
+{
+   my $np =  $opts{"u"};
+   updateFolderNFOs($np);
+   exit(0);
 
+}
 printf "Root programme  directory: %s\n", $gEpsDir;
 printf "NFO repo directory: %s\n", $gNfoRepoPath;
 
@@ -96,7 +105,7 @@ if( $opts{"l"})
    LogToFile(1);
 }
 
-# Avoid confusing the idiot mediaserver by putting the nfo in the final directory 
+# Avoid confusing the idiot mediaserver by putting the nfo in the final directory
 # before the video file is moved to there.
 if($gNfoOutDir eq "" )
 {
@@ -108,7 +117,7 @@ printf "NFO file directory: %s\n", $gNfoOutDir;
 # Default artwork file will be copied into a newly created program directory to avoid
 # the appleTV displaying a random scene from one of the episodes. This is more annoying
 # now that all programs get their own directory.
-# The default file is the folder.jpg file in the directory where the programm sub-dirs are created 
+# The default file is the folder.jpg file in the directory where the programm sub-dirs are created
 # unless a file is given on the command line.
 # This is obsolete now that a folder.jpg is generated for each programme sub-directory by the external
 # command.
@@ -120,10 +129,10 @@ if( $opts{"i"} )
 
 if(! -f $gDefArtwork)
 {
-  $gDefArtwork = ""; 
+  $gDefArtwork = "";
 }
 
-if( $opts{"a"} ) 
+if( $opts{"a"} )
 {
 	# TODO: should be a function call but need to (re) figure out how to return
 	# a list (array, hash, whatever the fork it's called in Perl) or
@@ -132,11 +141,11 @@ if( $opts{"a"} )
 	my $curdir = File::Spec->curdir();
 	$curdir = File::Spec->rel2abs(File::Spec->curdir());
 	printf "Processing video files in %s\n", $curdir;
-	
+
 	opendir $dh, $curdir or die "Couldn't open dir '$curdir': $!";
 	my @files = grep { !/^\.\.?$/ } readdir $dh;
 	closedir $dh;
-	
+
 	foreach my $file (@files)
 	{
 		my $fullfile = File::Spec->catdir($curdir,$file);
@@ -151,11 +160,11 @@ if( $opts{"a"} )
 			printf "Adding: %s\n", basename($fullfile);
 			push(@filelist, $fullfile);
 		}
-	}   	
-}  	
+	}
+}
 else
 {
-	@filelist = @ARGV;	
+	@filelist = @ARGV;
 }
 
 foreach my $file (@filelist)
@@ -173,7 +182,7 @@ foreach my $file (@filelist)
 #######################################################
 sub doOneArg
 {
-my($eitfile, $epsdir, $nforepopath, $nfodir) = @_;	
+my($eitfile, $epsdir, $nforepopath, $nfodir) = @_;
 my ($eitfilename,$directories,$suffix) = fileparse( $eitfile );
 my $filename = "";
 my $progname = "";
@@ -201,21 +210,21 @@ my $progdesc = "";
 	{
 	   die "Invalid filename format: expected 'Program NxN Title.ext' actual: " . $eitfilename;
 	}
-	
+
 	# yyyymmdd hhmm - channelname - programmeinfo
-	# The raw filename name from the sat box, usually this has already been processed 
-	if($progname =~ m/^\d{8} \d{4} \- .*? \- (.*$)$/) 
+	# The raw filename name from the sat box, usually this has already been processed
+	if($progname =~ m/^\d{8} \d{4} \- .*? \- (.*$)$/)
 	{
 	   $progname = $1;
 	}
-	
+
 	# program yy-mm-dd episode title
 	if($progname =~ m/^(.*) \d{2}-\d{2}-\d{2}$/)
 	{
 	   $progname = $1;
 	}
-	
-	
+
+
 	if($ext eq ".eit")
 	{
 	   $progdesc = getDescFromEIT($eitfile);
@@ -231,7 +240,7 @@ my $progdesc = "";
 	      # Should not be an issue when there is a generated NFO in the repo but could be a problem
 	      # for manually entered items.
 	      $progdesc = getDescFromEPS($epsdir, $progname, $season, $id);
-	      
+
 	      if($progdesc eq "")
 	      {
 	         # Can't get a description from anywhere else so make a default entry
@@ -241,19 +250,19 @@ my $progdesc = "";
 	}
 
 	$progdesc = sanitize($progdesc);
-	
+
 	my $episode = "Episode " . $id;
 	if($ep ne "")
 	{
 	   $episode = $ep;
 	}
-	
+
 	# NB: This initialises the show directory if it doesn't exist, ie. create dir, artwork, tvshow.nfo and folder.eps
 	updateeps($epsdir, $season, $id, $progname, $filename, $episode, $progdesc);
-	
+
 	printf "Creating NFO for: %s\n", $eitfilename;
 	my $nfofilename = createFileNFO($nfodir, $progname, $eitfilename, $season, $id, $episode, $progdesc);
-		
+
 }
 
 
@@ -263,7 +272,7 @@ my ($str) = @_;
 
    $str =~ s/\s+//;   # Remove all whitespace
    $str = lc $str;    # make lowercase
-   
+
    return $str;
 }
 
@@ -312,7 +321,7 @@ sub getDescFromEIT
 
    # Each 4D block appears to be 'discrete'
    # The 4E blocks appear to be contigious text, intended to be concatenated with no separator
-   
+
    my $tmp;
    my $blk;
    my $blklen;
@@ -410,11 +419,11 @@ sub getDescFromEIT
      $progdesc = $1;
      #printf "Trimmed description:\n%s\n", $progdesc;
    }
-   
-   
-   
+
+
+
    $progdesc = $progdesc . " " . $proginf[1];
-   
+
    # Remove other annoying stock phrases
    $progdesc =~ s/Contains .*?\. *?//g;
    $progdesc =~ s/Also in HD\. *?//g;
@@ -431,7 +440,7 @@ sub updateeps
   # no progname directory: could check for the progname in the drama folder.eps (very very long term!!)
   # for now: create/update the epsdir/progname.eps
   #my @epslines;
-  
+
   my $path = findepsfile($epsdir, $progname, 1);
   print "Updating EPS file: $path\n";
   my $xp;
@@ -445,17 +454,17 @@ sub updateeps
     $xp = XML::XPath->new(xml => $pi . "<episodes></episodes>\n");
   }
   my $rootnode =  $xp->find('/')->get_node(0);
-   
+
   my $nodelist = $xp->find('//episodes'); # should be an XML::XPath::NodeSet of size 1
   my $i = $nodelist->size();
-   
+
   my $episodesnode = $nodelist->get_node(0);
 
    my $xpcrit;
    $xpcrit = "season[id = '$season' and show = '$progname']";
    $nodelist = $xp->find($xpcrit, $episodesnode);
-   $i = $nodelist->size(); 
-  
+   $i = $nodelist->size();
+
    if($i == 0)
    {
       # season not present for this id aand show so add a new season node
@@ -466,8 +475,8 @@ sub updateeps
       addTextElement($newnode, "id", $season);
       addTextElement($newnode, "show", $progname);
       $nodelist = $xp->find($xpcrit, $episodesnode);
-      $i = $nodelist->size();  
-      print "New Season nodelist (size=$i):\n$nodelist\n";  
+      $i = $nodelist->size();
+      print "New Season nodelist (size=$i):\n$nodelist\n";
    }
    my $seasonnode = $nodelist->get_node(0);
 
@@ -476,13 +485,13 @@ sub updateeps
    # "episode[id = '$episodenum' and filename = '$episodefile']";
    $xpcrit = "episode[filename = '$filename']";
    $nodelist = $xp->find($xpcrit, $seasonnode);
-   $i = $nodelist->size(); 
-  
+   $i = $nodelist->size();
+
    if($i == 0)
    {
       print "Episode [$xpcrit] is NOT present: adding new episode\n";
       # This might be easier to do by creating a string for the episode, parsing it to a node and then adding it to season
-      
+
       my $newnode = XML::XPath::Node::Element->new("episode");
       $seasonnode->appendChild($newnode);
 
@@ -493,28 +502,28 @@ sub updateeps
       addTextElement($newnode, "name", $epname);
       addTextElement($newnode, "description", "");
       $nodelist = $xp->find($xpcrit, $seasonnode);
-      $i = $nodelist->size(); 
+      $i = $nodelist->size();
    }
    my $episodenode = $nodelist->get_node(0);
 
    $xpcrit = "description";
    $nodelist = $xp->find($xpcrit, $episodenode);
-   $i = $nodelist->size(); 
-   
+   $i = $nodelist->size();
+
    if($i == 0)
    {
       # Ensure we have a decription node to deal with
       addTextElement($episodenode, "description", "");
       $nodelist = $xp->find($xpcrit, $episodenode);
-      $i = $nodelist->size(); 
-           
+      $i = $nodelist->size();
+
    }
    if($i == 0)
    {
       print "Failed to find the 'description' entry\n";
    }
    my $descnode = $nodelist->get_node(0);
-   
+
    # Only update the description if new value is not the same as old value and is not zero length
    if($epdesc ne "")
    {
@@ -534,10 +543,10 @@ sub updateeps
    my $xmlout = $xp->getNodeAsXML(); #  XML::XPath::XMLParser::as_string($rootnode);
    my $twig = XML::Twig->new(pretty_print => 'indented');
    $twig->parse($xmlout);
-   $xmlout = $pi . $twig->sprint;   
+   $xmlout = $pi . $twig->sprint;
 
    # print "XML as string:$xmlout\n";
-   
+
    safebackup($path);
    saveutf8xfile($path, $xmlout);
 }
@@ -571,14 +580,14 @@ sub getDescFromNFORepo
    my $nfoname = $vidfilename; # $eitfilename;
    # Replace file extension with .nfo
    $nfoname =~ s/\.[^\.]*$/.nfo/g;
-   my $nforepopath = File::Spec->catdir($nforepodir, $nfoname);   
+   my $nforepopath = File::Spec->catdir($nforepodir, $nfoname);
    if( -s $nforepopath )
    {
       print "NFO file $nfoname is present in the NFO repository: Reading desc from repo NFO\n";
       my $xp = XML::XPath->new(filename => $nforepopath);
       my $xpcrit = "//episodedetails/plot/text()";
       my $descnodes =  $xp->find($xpcrit);
-      my $i = $descnodes->size();      
+      my $i = $descnodes->size();
       if($i > 0)
       {
          $nfodesc = $descnodes->get_node(0)->getValue();
@@ -597,7 +606,7 @@ sub getDescFromNFORepo_Simple
    my $nfoname = $vidfilename; #$eitfilename;
    # Replace file extension with .nfo
    $nfoname =~ s/\.[^\.]*$/.nfo/g;
-   my $nforepopath = File::Spec->catdir($nforepodir, $nfoname);   
+   my $nforepopath = File::Spec->catdir($nforepodir, $nfoname);
    if( -s $nforepopath )
    {
       my $xmlParser = new XML::Simple;
@@ -629,14 +638,14 @@ sub getDescFromEPS
       my $xp = XML::XPath->new(filename => $epsfile);
       my $xpcrit = "//season[show = '$progname' and id='$srcseas']/episode[id='$srceps']/description/text()";
       my $descnodes =  $xp->find($xpcrit);
-      
-      foreach my $node ($descnodes->get_nodelist) 
+
+      foreach my $node ($descnodes->get_nodelist)
       {
          my $desc = $node->getValue();
          if(length($desc) > length($epsdesc))
          {
             $epsdesc = $desc;
-         }          
+         }
       }
       print "Description from $epsfile: $epsdesc\n";
    }
@@ -663,7 +672,7 @@ sub getDescFromEPS_Simple
       foreach my $season (@$seasonref)
       {
          print "Season: $season->{id}[0]\n";
-         
+
          if($season->{id}[0] eq $srcseas)
          {
             print $season->{episode};
@@ -682,7 +691,7 @@ sub getDescFromEPS_Simple
       }
       print "Description: $epsdesc\n";
       # remove leading and trailing spaces, LFs, CRs
-      $epsdesc =~ s/^\s+|\s+$//g ;      
+      $epsdesc =~ s/^\s+|\s+$//g ;
    }
    return $epsdesc
 }
@@ -692,8 +701,8 @@ sub createFileNFO
 my ($rootdir, $progname, $vidfilename, $season, $id, $eptitle, $desc) = @_;
 
 my $nfopath = getprogrammepath($rootdir, $progname);
-   # kludge to support the creation of nfos in the staging directory or creation in a program name sub-dir of the master root directory. 
-   # If an nfo directory is given which is not the same as the master root directory then 
+   # kludge to support the creation of nfos in the staging directory or creation in a program name sub-dir of the master root directory.
+   # If an nfo directory is given which is not the same as the master root directory then
    #   the nfos should not be created in a program name sub-dir. Such a program name sub-dir will/should not exist.
    # If the master root directory is used then the nfos should be created in a program name sub-dir. Such a sub-dir will/should exist.
    # Therefore
@@ -707,7 +716,7 @@ my $nfopath = getprogrammepath($rootdir, $progname);
    {
       return;
    }
-   
+
    unless(-d $nfopath)
    {
       $nfopath = $rootdir;
@@ -724,36 +733,36 @@ my $uid = "9876";
       print "NFO file $nfopath already exists and will not be overwritten\n";
       return $nfopath;
    }
-   
+
    # Check whether NFO file is present in the new NFO repository
    # Actually this is not such a good idea: the content of the nfo repo file is
    # read earlier and any 'bad' characters filtered out so the in-memory should
    # always be written as the final version.
    # TODO ensure createFileNFO is always called with the desired nfo content, ie. any nfo repo
    # content is always loaded before calling createFileNFO.
-	 #my $nforepopath = File::Spec->catdir($gNfoRepoPath, $nfoname);   
+	 #my $nforepopath = File::Spec->catdir($gNfoRepoPath, $nfoname);
    #if( -s $nforepopath )
    #{
    #   print "NFO file $nfoname is present in the NFO repository: Copying to $nfopath\n";
    #   copy($nforepopath, $nfopath);
    #   return $nfopath;
    #}
-      
+
    print "createFileNFO: creating nfo file: " . $nfopath . " for " . $vidfilename . "\n";
    my $nfocont = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n";
    $nfocont .= "<episodedetails>\n";
    $nfocont .= "<title>" . xmlencode($eptitle).  "</title>\n";
    $nfocont .= "<showtitle>" . xmlencode($progname) . "</showtitle>\n";
-   
-   
+
+
    $nfocont .= "<season>" . $season . "</season>\n";
-   $nfocont .= "<episode>" . $id . "</episode>\n";   
+   $nfocont .= "<episode>" . $id . "</episode>\n";
    # Use md5 of nfo created so far to create the uid - excluding 'plot' should make
    # it reproducible for a given show/episode
    $uid = md5sum($nfocont);
-      
+
    $nfocont .= "<plot>" . xmlencode($desc) . "</plot>\n";
-   
+
    # 'type' = tvdb is required by the watchlist plugin used for syncing plays across multiple Kodis
    $nfocont .= "<uniqueid type=\"tvdb\" default=\"true\">" . $uid ."</uniqueid>\n";
 
@@ -769,7 +778,7 @@ my $uid = "9876";
       # Kodi ignores dateadded, only displays aired.
       # So set aired to the date from the filename if possible, otherwise set aired to the current date.
       my @nowparts = localtime(time());
-      $nfodate = sprintf("%04d-%02d-%02d", $nowparts[5]+1900, $nowparts[3], $nowparts[4]+1 );      
+      $nfodate = sprintf("%04d-%02d-%02d", $nowparts[5]+1900, $nowparts[3], $nowparts[4]+1 );
       $nfocont .= "<aired>" . $nfodate . "</aired>\n";
    }
    $nfocont .= "</episodedetails>\n";
@@ -782,22 +791,22 @@ sub createFolderNFO
 my ($show, $nfopath) = @_;
 my $uid = '1234';
    # If path contains a '.ignore' file then do not create the folder NFO. '.ignore' is
-   # used by 'Emby' mediaserver 
+   # used by 'Emby' mediaserver
   unless(-e File::Spec->catdir($nfopath, ".ignore"))
   {
       my $nfocont = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n";
       $nfocont .= "<tvshow>\n";
       $nfocont .= "<title>" . xmlencode($show) . "</title>\n";
-      
+
       # Use xmlencoded values for consistency with old nfos which have been updated
-      $uid = md5sum(normalize(xmlencode($show)));
-      
+      $uid = md5sum($TVSHOWSALT + normalize(xmlencode($show)));
+
       # 'type' = tvdb is required by the watchlist plugin used for syncing plays across multiple Kodis
       $nfocont .= "<uniqueid type=\"tvdb\" default=\"true\">" . $uid ."</uniqueid>\n";
       $nfocont .= "</tvshow>\n";
 
       $nfopath = File::Spec->catdir($nfopath, "tvshow.nfo");
-      saveutf8xfile($nfopath, $nfocont);  
+      saveutf8xfile($nfopath, $nfocont);
    }
 }
 
@@ -811,7 +820,7 @@ my ($path, $progname) = @_;
       $cmd =~ s/#PROGNAME#/$progname/g;
       $cmd =~ s/#PROGDIR#/$path/g;
       printf "Artwork creation command: %s\n", $cmd;
-      
+
       # TODO Execute the command!
       system($cmd);
    }
@@ -824,8 +833,8 @@ my ($path, $progname) = @_;
 sub getprogrammepath
 {
    my ($epsdir, $progname) = @_;
-   my $lcprogname = lc $progname; 
-   return File::Spec->catdir($epsdir, $lcprogname); 
+   my $lcprogname = lc $progname;
+   return File::Spec->catdir($epsdir, $lcprogname);
 }
 
 # Searches for an .eps file in the following:
@@ -842,7 +851,7 @@ my @epslines;
 
 
   # TODO: filter lcprogname for undesirable characters
-  $path = getprogrammepath($epsdir, $progname);  
+  $path = getprogrammepath($epsdir, $progname);
   print "Searching for $progname EPS in: $path\n";
   if($initshow != 0)
   {
@@ -852,7 +861,7 @@ my @epslines;
      {
        print "Creating new show directory: $path\n";
        make_path($path);
-       
+
        initArtwork($path, $progname);
 
        createFolderNFO($progname, $path);
@@ -861,13 +870,13 @@ my @epslines;
   if( -d $path)
   {
     print "Found directory for $progname: $path\n";
-    $path = File::Spec->catdir($path, "folder.eps");      
+    $path = File::Spec->catdir($path, "folder.eps");
     return $path;
   }
 
   # If directory creation failed then fallback to old 'drama' behaviour
-  
-  $path = File::Spec->catdir($epsdir, "drama", "folder.eps"); 
+
+  $path = File::Spec->catdir($epsdir, "drama", "folder.eps");
   if( -e $path)
   {
     print "Searching for $progname EPS in: $path\n";
@@ -882,7 +891,7 @@ my @epslines;
       }
     }
   }
-  $path = File::Spec->catdir($epsdir, $progname . ".eps"); 
+  $path = File::Spec->catdir($epsdir, $progname . ".eps");
   return $path;
 }
 
@@ -902,10 +911,10 @@ my ($path, $data) = @_;
    {
       my $tmp = $path . ".tmp";
       unlink "$tmp";
-      
+
       # To have a utf-8 encoded file with unix line endings
       # NB. The order of the 'layers' is important
-      # putting the utf8 before unix doesn't work and apparently should not have a space 
+      # putting the utf8 before unix doesn't work and apparently should not have a space
       # not have a space between them.
       # NBB The Perl docs helpfully do not make any mention of the "unix" layer.
       if(open(my $output, ">", $tmp) )
@@ -926,7 +935,7 @@ my ($path, $data) = @_;
    }
 }
 
-# Makes a rolling backup of the given file. Does not rely on 
+# Makes a rolling backup of the given file. Does not rely on
 # file test operators to test presence of files, it simply does
 # the move command which does not produce any visible errors when
 # there is no source file or when the dest file already exists.
@@ -940,7 +949,7 @@ my $backfmt=$path . ".%d.backup";
 	{
 		my $src = sprintf($backfmt, ($bkupid - 1));
 		my $dst = sprintf($backfmt, ($bkupid));
-	 	move($src, $dst);	
+	 	move($src, $dst);
 	}
 	copy($path, sprintf($backfmt, 0));
 }
@@ -984,39 +993,85 @@ sub HELP_MESSAGE()
 }
 
 sub md5sum
-{  
+{
 my $data = shift;
 my $digest = "";
 my $fh;
    eval
-   {    
+   {
       my $ctx = Digest::MD5->new;
       $ctx->add($data);
       $digest = $ctx->hexdigest;
    };
-   
+
    if($@)
-   { 
-      # What does this mean, again... some sort of error??   
+   {
+      # What does this mean, again... some sort of error??
       print $@;
       return "";
-   }  
-   
+   }
+
    return $digest;
+}
+
+sub updateFolderNFOs
+{
+
+   # Search for tvshow.nfo files in curdir and sub-directories
+my ($curdir) = @_;
+my @subdirs;
+my @md5files;
+my @files;
+my $dh;
+my $fullfile;
+my $needsmd5 = 0;
+my $hasmd5 = 0;
+
+   # basename of a full directory path is the name of the directory
+   printf "Processing: %s\n", basename($curdir);
+
+   # Open the directory and read everything (sub-dirs and files) except the "." and ".."
+   # Note that the names will not have path information on them
+   # print "Processing $curdir\n";
+   opendir $dh, $curdir or die "Couldn't open dir '$curdir': $!";
+   @files = grep { !/^\.\.?$/ } readdir $dh;
+   closedir $dh;
+
+   foreach my $file (@files)
+   {
+      $fullfile = File::Spec->catdir($curdir, $file);
+      if( -d $fullfile )
+      {
+         # Add to subdir
+         # print "Found directory: $file\n";
+         push(@subdirs, $fullfile);
+      }
+      elsif( $file =~ m/^tvshow\.nfo$/i )
+      {
+         printf "Updating: %s\n", $fullfile;
+         updateFolderNFO_UID($fullfile);
+      }
+   }
+
+   my @srtsubdirs = sort @subdirs;
+   foreach my $subdir (@srtsubdirs)
+   {
+      updateFolderNFOs($subdir);
+   }
 }
 
 sub updateFolderNFO_UID
 {
 my ($nfofile) = @_;
-my $nfo = ''
+my $nfo = '';
 my $show = '';
-my $uid = ''.
+my $uid = '';
 
    # For now simply handle as a string - could handle as XML as for updateeps but seems way to complex for this case
    $nfo = loadtext($nfofile);
-   
+
    # Extract 'title' tag
-   if( $nfo =~ m/<title>(.*)</title>/ ) 
+   if( $nfo =~ m#<title>(.*)</title># )
    {
       $show = $1;
    }
@@ -1026,29 +1081,36 @@ my $uid = ''.
       return;
    }
    # calculate uid
-   $uid = md5sum(normalize($show)); # Value is already xmlencoded
-   $uid = "<uniqueid type=\"tvdb\" default=\"true\">" . $uid ."</uniqueid>";
-   
-   # replace 'uniqueid' tag OR insert it before 'tvshow' closing.
-   my $qeuid = /\Q$uid\E/;
-   $nfo ~= s/<uniqueid .*</uniqueid>/$qeuid/
-   
+   $uid = md5sum($TVSHOWSALT + normalize($show)); # Value is already xmlencoded
+   $uid = "<uniqueid type=\"tvdb\" default=\"true\">" . $uid ."</uniqueid>\n";
+
+   # replace 'uniqueid' tag OR insert it before 'tvshow' closing - easier to remove if exists then insert at end - tag order is not important
+
+   # Remove any existing 'uniqueid'
+   $nfo =~ s#<uniqueid .*</uniqueid>##;
+   # print "uniqueid removed:\n" . $nfo;
+
+   # Insert new 'uniqueid' before the closing tvshow tag
+   $nfo =~ s#(</tvshow>)#   $uid$1#;
+   # print "new uniqueid inserted:\n" . $nfo;
+
    # save as string
    safebackup($nfofile);
    saveutf8xfile($nfofile, $nfo);
 }
 
-sub loadtext 
+sub loadtext
 {
    my ($file) = @_;
-   
+
    my $fulfile = File::Spec->rel2abs($file);
-   
+
    open my $fh, '<', $fulfile or die "Can't open file $fulfile: $!";
-     
-   binmode $fh, ":encoding(utf-8)";   
+
+   binmode $fh, ":encoding(utf-8)";
    my $file_content;
-   
+
    read $fh, $file_content, -s $fh;
+   close $fh or warn "loadtext: Failed to close $file: $!";
    return $file_content
 }
