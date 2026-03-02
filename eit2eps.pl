@@ -1002,7 +1002,7 @@ my $fh;
       # watchedlist editor forces id to be integer
       #my $ctx = Digest::MD5->new;
       #$ctx->add($data);
-      #$digest = $ctx->hexdigest; 
+      #$digest = $ctx->hexdigest;
       $digest = crc32($data);
    };
 
