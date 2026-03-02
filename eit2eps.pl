@@ -33,11 +33,12 @@ use File::Basename;
 use File::Path qw(make_path remove_tree);
 use File::Copy;
 use Digest::MD5;
+use String::CRC32; # cpanm install String::CRC32
 use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML
 use open ":std", ":encoding(UTF-8)"; # Tell Perl UTF-8 is being used.
-print "EIT2EPS v3.9 202603021433\n";
+print "EIT2EPS v3.9 202603021744\n";
 
 # Kludge to provide a command to create the folder artwork for a new program
 # the command should contain placeholders for the program name (#PROGNAME#) and the program directory (#PROGDIR#)
@@ -998,9 +999,11 @@ my $digest = "";
 my $fh;
    eval
    {
-      my $ctx = Digest::MD5->new;
-      $ctx->add($data);
-      $digest = $ctx->hexdigest;
+      # watchedlist editor forces id to be integer
+      #my $ctx = Digest::MD5->new;
+      #$ctx->add($data);
+      #$digest = $ctx->hexdigest; 
+      $digest = crc32($data);
    };
 
    if($@)
