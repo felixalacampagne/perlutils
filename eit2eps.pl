@@ -38,7 +38,7 @@ use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML
 use open ":std", ":encoding(UTF-8)"; # Tell Perl UTF-8 is being used.
-print "EIT2EPS v3.9 202603021744\n";
+print "EIT2EPS v3.9 202604021037\n";
 
 # Kludge to provide a command to create the folder artwork for a new program
 # the command should contain placeholders for the program name (#PROGNAME#) and the program directory (#PROGDIR#)
@@ -799,7 +799,7 @@ my $uid = '1234';
       $nfocont .= "<title>" . xmlencode($show) . "</title>\n";
 
       # Use xmlencoded values for consistency with old nfos which have been updated
-      $uid = md5sum($TVSHOWSALT + normalize(xmlencode($show)));
+      $uid = md5sum($TVSHOWSALT . normalize(xmlencode($show)));
 
       # 'type' = tvdb is required by the watchlist plugin used for syncing plays across multiple Kodis
       $nfocont .= "<uniqueid type=\"tvdb\" default=\"true\">" . $uid ."</uniqueid>\n";
@@ -1004,6 +1004,7 @@ my $fh;
       #$ctx->add($data);
       #$digest = $ctx->hexdigest;
       $digest = crc32($data);
+      print "Digest for '$data': $digest\n";
    };
 
    if($@)
