@@ -38,14 +38,14 @@ use XML::Simple;
 use XML::XPath;   # cpanm install XML::XPath
 use XML::Twig;    # Only used to pretty print the output XML
 use open ":std", ":encoding(UTF-8)"; # Tell Perl UTF-8 is being used.
-print "EIT2EPS v3.9 202604051023\n";
+print "EIT2EPS v3.9 202604051146\n";
 
 # Kludge to provide a command to create the folder artwork for a new program
 # the command should contain placeholders for the program name (#PROGNAME#) and the program directory (#PROGDIR#)
 my $gARTCMDTMPL=$ENV{ARTCMD} . "";
 
 # This is the default value, it can be overridden from the command line
-my $NFOREPOPATH="\\\\NASUG\\public\\videos\\mp4\\ZZnforepo"; # "\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
+my $NFOREPOPATH="n:\\videos\\mp4\\ZZnforepo"; # "\\\\MINNIE\\Development\\website\\tvguide\\tv\\nfo";
 
 my $TVSHOWSALT = "CPATVSHOWS";
 
