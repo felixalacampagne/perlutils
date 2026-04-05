@@ -1004,7 +1004,7 @@ my $fh;
       #$ctx->add($data);
       #$digest = $ctx->hexdigest;
       $digest = crc32($data);
-      print "Digest for '$data': $digest\n";
+      #print "Digest for '$data': $digest\n";
    };
 
    if($@)

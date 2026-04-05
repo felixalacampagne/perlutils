@@ -87,17 +87,22 @@ my $startsecs = time();
    $sleep *= 60;
    if($totsleep>0)
    {
+      # With Windows 11 minnie keeps going to sleep even though iambusy is running
+      # with a sleep value of 2mins.
+      # So try issuing ES_SYSTEM_REQUIRED very frequently, ie. every 5 second
+      $sleep = 5;
+        
       # If a total sleep is specified make sure the "poll" interval
       # is sensible
-      if($sleep < 1)
-      {
-         $sleep = $totsleep / 10;
-         # Probably a better way to do this...
-         if($sleep < 1)
-         {
-            $sleep = 1;
-         }
-      }
+      #if($sleep < 1)
+      #{
+      #   $sleep = $totsleep / 10;
+      #   # Probably a better way to do this...
+      #   if($sleep < 1)
+      #   {
+      #      $sleep = 1;
+      #   }
+      #}
    
       $ts = time2date($startsecs + $totsleep);
       $LOG->info("iambusy: Preventing computer sleep until $ts\n");
