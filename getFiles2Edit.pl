@@ -383,6 +383,8 @@ my @contents = "";
 my $line = "";
 
    open my $fh, "<", $path     || die "can't open $path: $!";
+
+   # TODO: Since we are outputting to the file this should probably be: binmode $fh, ":encoding(utf-8)";
    binmode INPUT, ":encoding(utf-8)";
    while( $line = <$fh> )
    {

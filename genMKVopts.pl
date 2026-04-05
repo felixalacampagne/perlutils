@@ -191,7 +191,7 @@ my $audid = ($ac3id > -1) ? $ac3id : $mp2id;
    # sooner and the drops are less pronounced when the video is at the start.
    # Still no clue why Kodi does it - must try it on the GoogleTV to see
    # if it is specifc to the Sony.
-   # Behaviour on Shield is different. There is an breif audio dropout at the start
+   # Behaviour on Shield is different. There is a brief audio dropout at the start
    # and also missing video while the audio is playing. The video resumes
    # after around 5s - this is probably something to do with the edit.
    push(@trackorder, "0:$vidid");
@@ -243,6 +243,7 @@ my @contents = "";
 my $line = "";
 
    open my $fh, "<", $path     || die "can't open $path: $!";
+   # TODO: Since we are outputting to the file this should probably be: binmode $fh, ":encoding(utf-8)";
    binmode INPUT, ":encoding(utf-8)";
    while( $line = <$fh> )
    {
