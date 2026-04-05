@@ -15,6 +15,13 @@ use File::Glob qw(:globally :nocase);
 # It probably belongs in the SCUWin package
 use Win32::API;
 
+sub refreshExplorer
+{
+   my $refresh = new Win32::API('shell32', 'SHChangeNotify', 'NINN', 'I');
+   my $P1 = 0x8000000;
+   my $P2 = 0x1000;
+   $refresh->Call($P1, $P2, 0, 0);
+}
 
 sub sendToRecycleBin 
 {
@@ -78,3 +85,4 @@ if( @ARGV < 1)
 my $arg0 = $ARGV[0];
 printf "Deleting %s\n", $arg0;
 recycleFiles $arg0;
+refreshExplorer

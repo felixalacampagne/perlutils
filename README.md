@@ -3,17 +3,28 @@ My collection of Perl utilities
 
 A bunch of utilities and educational exercises using Perl. Most were written many days ago and given the nature of Perl I no longer have any clue what they do, let alone how they work!
 
-Some of the scripts rely on third party Perl libraries not part of the standard Perl distribution;
+Non-exhaustive list of Perl libraries used which are not part of the standard Perl distribution;
 
-- MP3::Tag - Used by the podcast related scripts. If I recall correctly I modified part of the MP3:Tag library to provide limited support for some additional tags, ie. RVAD and PCAST (PCAST is related to podcasts and my constantly unsuccessful attempts to pursuade the Apple Podcast app to play my podcasts in the order I want them played. RVAD is relative gain adjustment, probably my attempt to boost the quieter sections of podcasts so I could hear them in the car, a sort of dynamic range compression but way more crude and probably unsuccessful). I just put my modified files in the same 'lib' directory as for my own library modules. I don't remember where I got the source from originally but the library is now
-available as a cpan module: cpanm install MP3::Tag. I have no idea how to get my changes into the distribution so it is unlikely the podcast scripts will work as intended with the cpan version.
+- MP3::Tag - Used by the podcast related scripts. If I recall correctly I modified part of the MP3:Tag library to provide limited support for some additional tags, ie. RVAD and PCAST (PCAST is related to podcasts and my constantly unsuccessful attempts to pursuade the Apple Podcast app to play my podcasts in the order I want them played. RVAD is relative gain adjustment, probably my attempt to boost the quieter sections of podcasts so I could hear them in the car, a sort of dynamic range compression but way more crude and probably unsuccessful). I just put my modified files in the same 'lib' directory as for my own library modules. I don't remember where I got the source from originally but the library is now available as a cpan module: cpanm install MP3::Tag. I have no idea how to get my changes into the distribution so it is unlikely the podcast scripts will work as intended with the cpan version.
 - XML::XPath - used by eit2eps: cpanm install XML::XPath
 - XML::Twig - used by eit2eps: cpanm install XML::Twig
+- String::CRC32 - used by eit2eps: cpanm install String::CRC32
+- Win32::GUI - used by monitorprocess4power: cpanm Win32::GUI --force
+- Date::Calc - used by foldermd5, flacmd5: cpanm install Date::Calc
 
+### Git merge conflict management
 
-Sadly the Eclipse git utility is virutally useless when it comes to merging conflicting files with anything more than a single conflict so must install an additional app and do merges from a git command line - IntelliJ does this better but it's over the top to install it just to make merges easier especially when the git projects are not maven/java based (and I don't know if the free version has the same git merge feature as the paid version). 
+Not really related to Perl but while adding these utils to GitHub I encountered numerous git gotchas. First reaction was to try using one of the Java IDEs to manage the git stuff. 
 
-So this is how to setup git to do merges using a helpful merge tool - KDiff3:
+I use IntelliJ Pro for my job and it handles git merges well but is way OTT to install just to make merges easier especially when the git projects are not maven/java based (and I don't know if the free version has the same git merge feature as the paid version).
+
+I use Eclipse for my personal projects, no cash to pay for an IDE and I've been using Eclipse since before I knew of Intellij. Sadly the Eclipse git utility is virutally useless when it comes to merging conflicting files with anything more than a single conflict and it uses an incomprehensible nomenclature which is guarenteed to cause mistakes. In addition loading Eclipse takes such a long time that using it just for git management is completely unrealistic. 
+
+I tried to install a git merge tool. Most references to this use KDiff3. It requires a lot of configuration to get it to work and the UI takes a bit of getting used to but it does the job and is less confusing than the Eclipse git manager. Setup of git mergetool with KDiff3 is described below.
+
+I started to use VSCode for a personal Angular project. The git manager in VSCode is very similar to that of IntelliJ and is pretty intuitive for handling merge conflicts. VSCode also loads very quickly making it practical to use simply for git management. This is now my preferred way to interact with git and github. I just discovered that there are Perl add-ons for VSCode so now I will have to teach myself to go to VSCode when I want to write Perl code instead of UE or NPP!
+
+### How I setup git to do merges using KDiff3 as the merge tool
 
 - Install kdiff3: best to use a path without spaces since git is essentially a Unix program
 - Update git global config
