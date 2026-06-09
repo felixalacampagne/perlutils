@@ -53,12 +53,13 @@ my @timestart = Today_and_Now();
 my $log = SCULog->new(); 
 $log->level(SCULog->LOG_DEBUG);
 
-my $itunesxmlpl = "N:\\Music\\playlists\\music.xml";
-my $playerroot="K:\\Music";
+my $itunesxmlpl = "N:\\music\\playlists\\music.xml";
+my $playerroot="K:\\music";
 my $maxfiles = 0;
 my $maxbytes = 0;
 my $procs = 3;
 my $keepoldfiles = 0;
+my $converttomp3 = 1;
 my $playerdrv;
 my $pathname;
 my %cnvjobs = (); # hash of hash references to conversion jobs in progress
@@ -71,6 +72,8 @@ my $optsz = 0;
 my $optkeep = 1;
 my $optjob = 0;
 my $optorder = 0;
+my $optconvert = 1;
+
 # set FFMPEG=%UTLDIR%\ffmpeg\ffmpeg
 # set FFMPEG=%UTLDIR%\ffmpeg\bin\ffmpeg
 # perl it2gmpA.pl -p "N:\Music\playlists\music.xml" -m "k:\Music"
@@ -83,7 +86,8 @@ GetOptions('playlist|p=s' => \$optpl,
            'size|s=s' => \$optsz,
            'keep|k!' => \$optkeep,
            'jobs|j=i' => \$optjob,
-           'ordered|o' => \$optorder);
+           'ordered|o' => \$optorder,
+           'convert|t!' => \$optconvert);
 
 if($optorder != 0)
 {
@@ -122,9 +126,12 @@ if($optjob > 1)
 
 $maxfiles = $optcnt;
 $keepoldfiles = $optkeep;
+$converttomp3 = $optconvert;
 
 $log->debug("iTunes XML Playlist: %s\n", $itunesxmlpl);
 $log->debug("Mediaplayer root:    %s\n", $playerroot);
+$log->debug("Convert to mp3:      %d\n", $converttomp3);
+
 if($maxfiles > 0)
 {
    $log->debug("Max. files:          %d\n", $maxfiles);
@@ -138,7 +145,7 @@ if($maxbytes < 0)
 {
    exit(1);
 }
-if($FFMPEG eq "")
+if($FFMPEG eq "" && $converttomp3 != 0)
 {
    print "FFMPEG environment variable must be set to point to the ffmpeg executable";
    exit(1);
@@ -313,7 +320,10 @@ while(($trackcnt + $runningjobs) < $tracktotal)
    my $destpathFS = File::Spec->catfile($mpalbumdirFS, $fileFS);
 
    # Dest will always be an mp3 file. Conversion handled below based on source filetype (extension)
-   $destpathFS =~ s/\.[^\.]*$/.mp3/g; 
+   if( $converttomp3 != 0 )
+   {
+      $destpathFS =~ s/\.[^\.]*$/.mp3/g; 
+   }
    #$log->debug("Dest Filepath: %s\n", $destpathFS);
    
    # Before here there are unlikely to be exceptions
@@ -324,6 +334,7 @@ while(($trackcnt + $runningjobs) < $tracktotal)
    
    eval
    {
+      # Must keep original extension if not converting to MP3
       unless(-d $mpalbumdirFS)
       {
          $log->debug("Creating album directory: %s\n", $mpalbumdirFS);
@@ -336,77 +347,92 @@ while(($trackcnt + $runningjobs) < $tracktotal)
          
          # Direct copy only possible if source is mp3
          # Otherwise convert source to mp3 using destpathFS as the output
-         if($srcpathFS =~ m/.*\.m4a$/i)
+         if( $srcpathFS =~ m/.*\.m4a$/i )
          {
-            # If an async conversions has been launched wait for it to stop
-            $runningjobs = keys %cnvjobs; # This is how you have to find the size!!!!!
-            if($runningjobs > $procs)
+            if( $converttomp3 != 0 )
             {
-               $log->debug("No. jobs in progress: %d.\n", $runningjobs);
-
-               my $wprc=-1;
-               while($wprc == -1)
+               # If an async conversions has been launched wait for it to stop
+               $runningjobs = keys %cnvjobs; # This is how you have to find the size!!!!!
+               if($runningjobs > $procs)
                {
-                  # Forking piece of shirt doesn't even wait for any child to exit and 
-                  # always returns -1. This is with waitpid(0,0) which as far as I can tell
-                  # from the piss poor documenation should wait indefinitely for any child to terminate.
-                  # BUT when I give pid=-1 and 2nd param=10000 waitpid starts to 
-                  # return the PIDs of the finished jobs! Why the fork couldn't the docs
-                  # say that's how it works! actually it is completely unclear what the
-                  # second parameter is for, is it just for flags, in which case what are
-                  # the possible values, or is it for timeout as well, in which case
-                  # how to specify no timeout????
-                  # 
-                  $log->debug("Waiting for a job to finish.\n");
-                  $wprc = waitpid(-1, 360000);
-                  #$log->debug("waitpid return: %d\n", $wprc);
-                  if(exists $cnvjobs{$wprc})
+                  $log->debug("No. jobs in progress: %d.\n", $runningjobs);
+   
+                  my $wprc=-1;
+                  while($wprc == -1)
                   {
-                     $asyncdestfile = $cnvjobs{$wprc}->{'dst'};
-                     my $outsz = stat($asyncdestfile)->size;
-                     $log->debug("Job %d terminated. Size of converted file %s: %d\n", $wprc, $asyncdestfile, $outsz);
-                     $bytecount += $outsz;
-                     $trackcnt++;
-                     delete ($cnvjobs{$wprc});
-                     # More Perl madness, can 'last' out of while loop but not a do...while loop - WTF?? 
+                     # Forking piece of shirt doesn't even wait for any child to exit and 
+                     # always returns -1. This is with waitpid(0,0) which as far as I can tell
+                     # from the piss poor documenation should wait indefinitely for any child to terminate.
+                     # BUT when I give pid=-1 and 2nd param=10000 waitpid starts to 
+                     # return the PIDs of the finished jobs! Why the fork couldn't the docs
+                     # say that's how it works! actually it is completely unclear what the
+                     # second parameter is for, is it just for flags, in which case what are
+                     # the possible values, or is it for timeout as well, in which case
+                     # how to specify no timeout????
+                     # 
+                     $log->debug("Waiting for a job to finish.\n");
+                     $wprc = waitpid(-1, 360000);
+                     #$log->debug("waitpid return: %d\n", $wprc);
+                     if(exists $cnvjobs{$wprc})
+                     {
+                        $asyncdestfile = $cnvjobs{$wprc}->{'dst'};
+                        my $outsz = stat($asyncdestfile)->size;
+                        $log->debug("Job %d terminated. Size of converted file %s: %d\n", $wprc, $asyncdestfile, $outsz);
+                        $bytecount += $outsz;
+                        $trackcnt++;
+                        delete ($cnvjobs{$wprc});
+                        # More Perl madness, can 'last' out of while loop but not a do...while loop - WTF?? 
+                        last;
+                     }
+                  }
+                  
+                  $runningjobs = keys %cnvjobs;
+                  $log->debug("Size of job list after wait loop: %d\n", $runningjobs);
+                  if(($maxbytes>0) && ($bytecount >= ($maxbytes - ($avgsz * $runningjobs)  )))
+                  {
+                     $log->debug("Max. bytecount exceeded with %d jobs still running: %d (%d @ %d), \n", $runningjobs, $bytecount, ($avgsz * $runningjobs), $avgsz);
                      last;
                   }
                }
                
-               $runningjobs = keys %cnvjobs;
-               $log->debug("Size of job list after wait loop: %d\n", $runningjobs);
-               if(($maxbytes>0) && ($bytecount >= ($maxbytes - ($avgsz * $runningjobs)  )))
+               $asyncdestfile = $destpathFS;
+   
+               my $ffmpegcmd;
+               #$log->info("Converting AAC file " . $srcpathFS . " to MP3 file " .  $destpathFS . "\n");
+               # ffmpeg -i <infile>.m4a -c:v copy -map 0 -metadata:s:v title="cover" -metadata:s:v comment="Cover (Front)"  -id3v2_version 3 -write_id3v1 1 -codec:a libmp3lame -q:a 0 <outfile>.mp3
+               $ffmpegcmd = sprintf("\"%s\" -i \"%s\" -n -nostdin -hide_banner -nostats -loglevel error -c:v copy -map 0 -metadata:s:v title=\"cover\" -metadata:s:v comment=\"Cover (Front)\" -id3v2_version 3 -write_id3v1 1 -codec:a libmp3lame -q:a 0 \"%s\"", $FFMPEG, $srcpathFS, $destpathFS);
+               $log->debug("Launching conversion command: %s\n", $ffmpegcmd);
+               
+               $asyncpid = fork();
+               if($asyncpid == 0)
                {
-                  $log->debug("Max. bytecount exceeded with %d jobs still running: %d (%d @ %d), \n", $runningjobs, $bytecount, ($avgsz * $runningjobs), $avgsz);
-                  last;
+                  # This bit is performed by the CHILD
+                  $log->debug("CHILD: Start: %s\n", $asyncdestfile);
+                  system($ffmpegcmd);
+                  $log->debug("CHILD: Done: %s\n", $asyncdestfile);
+                  exit(0);
                }
+               # Although the most obvious real world use of a hash is to store multiple hashes (since a hash is the
+               # closest thing to a struct in Perl) it is very difficult to figure out how to actually do it!
+               # Apparently the following should just create the hash keyed by pid in the hash 
+               
+               $cnvjobs{$asyncpid}{'pid'} = $asyncpid;
+               $cnvjobs{$asyncpid}{'dst'} = $asyncdestfile;
+               $runningjobs = keys %cnvjobs;
+               $log->debug("Added job %d to list: running jobs = %d\n", $asyncpid, $runningjobs);
             }
-            
-            $asyncdestfile = $destpathFS;
-
-            my $ffmpegcmd;
-            #$log->info("Converting AAC file " . $srcpathFS . " to MP3 file " .  $destpathFS . "\n");
-            # ffmpeg -i <infile>.m4a -c:v copy -map 0 -metadata:s:v title="cover" -metadata:s:v comment="Cover (Front)"  -id3v2_version 3 -write_id3v1 1 -codec:a libmp3lame -q:a 0 <outfile>.mp3
-            $ffmpegcmd = sprintf("\"%s\" -i \"%s\" -n -nostdin -hide_banner -nostats -loglevel error -c:v copy -map 0 -metadata:s:v title=\"cover\" -metadata:s:v comment=\"Cover (Front)\" -id3v2_version 3 -write_id3v1 1 -codec:a libmp3lame -q:a 0 \"%s\"", $FFMPEG, $srcpathFS, $destpathFS);
-            $log->debug("Launching conversion command: %s\n", $ffmpegcmd);
-            
-            $asyncpid = fork();
-            if($asyncpid == 0)
+            else
             {
-               # This bit is performed by the CHILD
-               $log->debug("CHILD: Start: %s\n", $asyncdestfile);
-               system($ffmpegcmd);
-               $log->debug("CHILD: Done: %s\n", $asyncdestfile);
-               exit(0);
+               if(!copy($srcpathFS,  $destpathFS))
+               {
+                  $log->warn("FAILED to copy " . $srcpathFS . " to " .  $destpathFS . ": " . $! . "\n");
+               }
+               else
+               {
+                  $trackcnt++;
+                  $bytecount += stat($destpathFS)->size;
+               }               
             }
-            # Although the most obvious real world use of a hash is to store multiple hashes (since a hash is the
-            # closest thing to a struct in Perl) it is very difficult to figure out how to actually do it!
-            # Apparently the following should just create the hash keyed by pid in the hash 
-            
-            $cnvjobs{$asyncpid}{'pid'} = $asyncpid;
-            $cnvjobs{$asyncpid}{'dst'} = $asyncdestfile;
-            $runningjobs = keys %cnvjobs;
-            $log->debug("Added job %d to list: running jobs = %d\n", $asyncpid, $runningjobs);
          }
          elsif($srcpathFS =~ m/.*\.mp3$/i)
          {
