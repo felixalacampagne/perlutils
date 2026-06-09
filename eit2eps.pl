@@ -311,11 +311,12 @@ sub getDescFromEIT
    printf "Parsing EIT file: %s\n", $eitfile;
    my $progdesc = "";
    my @proginf;
-   my $fh = open my $fh, '<:raw', $eitfile;
    my $bytesread;
 
    # skip the time info and move to where the first block should be
    my $bytes;
+
+   open my $fh, '<:raw', $eitfile;
    $bytesread = read $fh, $bytes, 12;
    die "Read $bytesread bytes but expected 12" unless $bytesread == 12;
 
@@ -794,9 +795,17 @@ my $uid = '1234';
    # used by 'Emby' mediaserver
   unless(-e File::Spec->catdir($nfopath, ".ignore"))
   {
+
+      # TODO Put this somewhere else
+      my $showplot = "";
+      $showplot = getDescFromNFORepo((lc $show) . "_tvshow.nfo", $gNfoRepoPath);
+
+
+
       my $nfocont = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n";
       $nfocont .= "<tvshow>\n";
       $nfocont .= "<title>" . xmlencode($show) . "</title>\n";
+      $nfocont .= "<plot>" . $showplot . "</plot>\n";
 
       # Use xmlencoded values for consistency with old nfos which have been updated
       $uid = md5sum($TVSHOWSALT . normalize(xmlencode($show)));
