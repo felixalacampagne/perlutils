@@ -3,7 +3,7 @@
 # Performs the calculation for all .flac or .m4a files in the sub-directories of the current or specified directory
 # 11 Jun 2026 v2.0 Support for 24bit files. Requires ffprobe in addition to ffmpeg so env.var
 #             must now be the ffmpeg bin directory path. Uses the MD5-Filename separator in the
-#             MD5 file to indicate the bit depth to use when calculating the bit depth.
+#             MD5 file to indicate the bit depth to use when calculating the digest.
 #             MD5 files generated from the embedded FLAC values, eg. by FLACtagger, will need
 #             the separator changing to '!' for 24bit files.
 # 26 Oct 2018 Defaults to checking. Creates .md5 if it does not exist.
