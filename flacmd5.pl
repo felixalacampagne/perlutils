@@ -1,6 +1,11 @@
 #!/usr/bin/perl
 # Use ffmepg to calculate the MD5 of the audio in FLAC files.
 # Performs the calculation for all .flac or .m4a files in the sub-directories of the current or specified directory
+# 11 Jun 2026 v2.0 Support for 24bit files. Requires ffprobe in addition to ffmpeg so env.var
+#             must now be the ffmpeg bin directory path. Uses the MD5-Filename separator in the
+#             MD5 file to indicate the bit depth to use when calculating the bit depth.
+#             MD5 files generated from the embedded FLAC values, eg. by FLACtagger, will need
+#             the separator changing to '!' for 24bit files.
 # 26 Oct 2018 Defaults to checking. Creates .md5 if it does not exist.
 # 19 Aug 2018 Can handle ALAC .m4a files
 # 27 Jul 2018 Adapted from foldermd5
@@ -23,15 +28,35 @@ use Getopt::Std;
 use Term::ReadKey;
 use Win32::API;
 use FALC::SCULog;
+use JSON;
 
-my $FFMPEG=$ENV{FFMPEG} . "";
+my $VERSION="FLACMD5 v2.0 202606111220";
+my $FFMPEG = "ffmpeg.exe";
+my $FFPROBE = "ffprobe.exe";
+my $FFMPEGDIR=$ENV{FFMPEG} . "";
 my $MD5CNTNAME = "folderaudio.md5";
-if($FFMPEG eq "")
+my $SEP_16 = "*";
+my $SEP_24 = "!";
+
+if($FFMPEGDIR eq "")
 {
    print "FFMPEG environment variable must be set to point to the ffmpeg executable";
    exit(1);
 }
 
+$FFMPEG = File::Spec->catdir($FFMPEGDIR, $FFMPEG);
+$FFPROBE = File::Spec->catdir($FFMPEGDIR, $FFPROBE);
+if( ! -f $FFMPEG )
+{
+   print "ffmpeg executable is not available at $FFMPEG";
+   exit(1);
+}
+
+if( ! -f $FFPROBE )
+{
+   print "ffprobe executable is not available at $FFPROBE";
+   exit(1);
+}
 
 my $LOG = FALC::SCULog->new();
 
@@ -70,7 +95,7 @@ if( $opts{"c"} == 1)
 
 if( $opts{"v"} == 1)
 {
-   $LOG->level(SCULog->LOG_DEBUG);
+   $LOG->level(FALC::SCULog->LOG_DEBUG);
 }
 
 if( $opts{"l"} == 1)
@@ -85,7 +110,7 @@ if( $opts{"p"} == 1)
 
 if( $opts{"r"} == 1)
 {
-   ForceRecalc(1);
+   ForceRecalc(1); # TODO: implement this!
 }
 
 # The options are removed from argv which leaves just the directory.
@@ -176,6 +201,7 @@ do
    # At least the output is actually going into the file though.
    $|=1;
 
+   $LOG->info($VERSION . "\n");
 
    my $tab="  ";
    if( -d $startdir )
@@ -267,7 +293,7 @@ my $foldermd5path = File::Spec->catdir($directories, $MD5CNTNAME);
       {
          # ae907fd31ff602bbb33bc716c072f0f5 *01 One Of These Nights.mp3
          # Split line into hash
-         if ( $md5 =~ m/^([a-z0-9]*) \*(.*)$/ )
+         if ( $md5 =~ m/^([a-z0-9]*) [!\*](.*)$/ )
          {
             $hash = $1;
             $name = $2;
@@ -520,16 +546,23 @@ my $hash;
 my $name;
 my $calchash;
 my $fullfile;
+my $bits;
    $LOG->info("chckmd5: CHECKING: $chkdir\n");
    foreach my $md5 (@md5s)
    {
+      $bits = "";
       # ae907fd31ff602bbb33bc716c072f0f5 *01 One Of These Nights.mp3
+      # A '!' instead of "*" indicates files has bit depth of 24bit.
       # Split line into hash
-      if ( $md5 =~ m/^([a-z0-9]*) \*(.*)$/ )
+      if ( $md5 =~ m/^([a-z0-9]*) ([\*!])(.*)$/ )
       {
          $hash = $1;
-         $name = $2;
-
+         $name = $3;
+         if( $2 eq '!' )
+         {
+            $LOG->debug("bit flag: $2: setting bit depth to 24\n");
+            $bits="24";
+         }
          $fullfile = File::Spec->catdir($chkdir, $name);
 
          # Need to check that file exists
@@ -543,12 +576,12 @@ my $fullfile;
          if( -e $fsname)
          {
 
-            $calchash = md5sum($fsname);
+            $calchash = md5sum($fsname, $bits);
             if( $hash ne $calchash )
             {
                push(@fails, "MISMATCH: " . $name);
                $LOG->info("chckmd5: MISMATCH: $name\n");
-               $LOG->debug("new:$calchash prev:$hash\n");
+               $LOG->debug("bits:$bits new:$calchash prev:$md5\n");
             }
             else
             {
@@ -579,23 +612,73 @@ my @files = @$filesref;
 my $md5sum;
 my $md5;
 my $fullfile;
+my $sep = "";
+my $bits = "";
+
 
    foreach my $file (@files)
    {
       $fullfile = File::Spec->catdir($md5dir, $file);
-      $md5 = md5sum($fullfile);
+
+      $bits = getBitDepth($fullfile);
+      if( $bits eq "24" )
+      {
+         $sep = $SEP_24;
+      }
+      else
+      {
+         $sep = $SEP_16;
+      }
+
+      $md5 = md5sum($fullfile, $bits);
       # ae907fd31ff602bbb33bc716c072f0f5 *01 One Of These Nights.mp3
-      $md5sum .= $md5 . " *" . $file . "\n";
+      $md5sum .= $md5 . " " .  $sep . $file . "\n";
       $LOG->debug( "MD5: $md5 File: $file\n");
    }
    return $md5sum;
 }
 
+sub getBitDepth
+{
+my ($fullfile) = @_;
+my $json = "";
+
+   # "C:\Development\utils\ffmpeg\bin\ffprobe.exe" -select_streams a:0 -show_entries stream=bits_per_raw_sample,codec_name,sample_rate,channels:  -v error -output_format json "12 Let There Be More Light.flac"
+   # JSON output similar to;
+   # {
+   # "programs": [
+   # ],
+   # "stream_groups": [
+   # ],
+   # "streams": [
+   #   {
+   #       "codec_name": "flac",
+   #       "sample_rate": "48000",
+   #       "channels": 2,
+   #       "bits_per_raw_sample": "24"
+   #   }
+   # ]
+   # }
+   $json = qx ($FFPROBE  -select_streams a:0 -show_entries "stream=bits_per_raw_sample,codec_name,sample_rate,channels" -v 0 -output_format json "$fullfile");
+   #print "ffprobe output:\n$json\n";
+
+   # Perl gobbledeygook for getting a value out of the JSON - no idea what it means
+   # or whether all steps are necessary
+   my $mapref = decode_json($json);
+   my %identity = %{$mapref};
+   my @streams = @{$identity{'streams'}};
+   my %stream = %{$streams[0]};
+   my $codec = $stream{'codec_name'};
+   my $bitdepth = $stream{'bits_per_raw_sample'};
+
+   print "$fullfile: codec: $codec bit depth: $bitdepth\n";
+   return $bitdepth;
+}
 
 sub md5sum
 {
-my $file = shift;
-
+my ($file, $bits) = @_;
+my $bitencoder = "";
 my $digest = "";
 my $fh;
 my $ffres;
@@ -627,7 +710,7 @@ my $ffres;
       # in the md5 because it is treated as a video stream. Have to assume the audio stream is
       # always stream 0, I guess.... typical forking Unix shit '-map 0:a' means take the audio
       # stream as the first stream and ignore the rest.
-      
+
       # It may be possible to md5 just the mp3 audio data, ie. ignore the tag info and do not convert
       # the mp3 data to pcm, using the following ffmpeg command;
       # ffmpeg -i "$file" -map 0:a -c:a copy -v 0 -f hash -hash md5 -
@@ -635,10 +718,30 @@ my $ffres;
       # ffmpeg -i "$file" -c:a copy -vn -f md5 -
       # unfortunately this does not produce the same md5 as the mp3tag command _md5audio.
       # So for now I'm sticking with the same command as used for flac and alsc. This might actually
-      # be better since apparently there are some mp3 headers, which are not tags, which may or may not 
+      # be better since apparently there are some mp3 headers, which are not tags, which may or may not
       # be changed, or may or may not be included in an mp3audio digest but in theory would not affect the
       # raw pcm audio output...
-      $ffres = qx ($FFMPEG -i "$file" -map 0:a -f hash -hash md5 -v 0 -);
+      #
+      # '-vn' might be an alternative to '-map 0:a' for ignoring artwork etc.
+      #
+      # Default behaviour for MD5 is to generate 16bit signed PCM output and then hash that.
+      # This is OK for CD derived sources but results in invalid hashes when HiRes
+      # audio, eg. from BluRays, is processed.
+      # '-c:a pcm_s24le', eg. %FFMPEG% -i "01 Interstellar Overdrive.flac" -vn -c:a pcm_s24le -f hash -hash md5 -v 0 -,
+      # gives a matching MD5 for many of the HD audio files but so far I have not found anyway
+      # to get ffmpeg to automatically use the source bit depth when converting to PCM which
+      # is extrememly frustrating.
+
+      # Current solution for the bitdepth issue is to use ffprobe to determine the bit depth
+      # when (re-)creating the folderaudio.md5 and to use the digest-filename separator
+      # in the folderaudio.md5 file indicate the bit depth that is required to reproduce the digest.
+      if($bits eq "24")
+      {
+         $bitencoder = "-c:a pcm_s24le";
+      }
+
+      $ffres = qx ($FFMPEG -i "$file" -vn $bitencoder -f hash -hash md5 -v 0 -);
+
       #print "ffmpeg returned the following:\n" . $ffres;
       if($ffres =~ m/MD5=([a-f0-9]{32,32})/)
       {
