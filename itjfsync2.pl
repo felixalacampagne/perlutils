@@ -87,11 +87,42 @@ for (my $i = 1; $i <= $count; $i++) {
     my $album  = $track->Album  || '';
     my $artist = $track->Artist || '';
 
-    # ?? NEW STEP: Trim leading and trailing whitespaces cleanly via Regex
-    # \s+ matches any whitespace characters. ^ looks at the start, $ looks at the end.
-    $name   =~ s/^\s+|\s+$//g;
-    $album  =~ s/^\s+|\s+$//g;
-    $artist =~ s/^\s+|\s+$//g;
+   # ?? NEW STEP: Trim leading and trailing whitespaces cleanly via Regex
+   # \s+ matches any whitespace characters. ^ looks at the start, $ looks at the end.
+   $name   =~ s/^\s+|\s+$//g;
+   $album  =~ s/^\s+|\s+$//g;
+   $artist =~ s/^\s+|\s+$//g;
+
+   my $itunes_rating_raw = $track->Rating || 0; # Returns 0, 20, 40, 60, 80, or 100
+
+   # 5. Look up the Track GUID and its current Jellyfin UserData info
+   my $lookup_sth = $dbh->prepare(<<"SQL");
+      SELECT b.Id, u.LastPlayedDate, u.PlayCount, u.Rating
+      FROM BaseItems b
+      LEFT JOIN UserData u
+         ON b.Id = u.ItemId AND u.UserId = ? AND LOWER(u.CustomDataKey) = LOWER(b.Id)
+      WHERE b.Type = 'MediaBrowser.Controller.Entities.Audio.Audio'
+         AND LOWER(b.Name) = LOWER(?)
+         AND LOWER(b.Album) = LOWER(?)
+         AND LOWER(b.Artists) = LOWER(?)
+      LIMIT 1;
+SQL
+   $lookup_sth->execute($user_id, $name, $album, $artist);
+   my ($jellyfin_track_id, $jellyfin_date_str, $jellyfin_play_count, $jellyfin_rating) = $lookup_sth->fetchrow_array();
+   $lookup_sth->finish();
+
+   # Report when there is no Jellyfin DB entry for the track
+   if (!$jellyfin_track_id) {
+      print "WARN Unmapped Track: No Jellyfin DB Entry found for: [$artist] - [$name] (Album: $album) - [$jellyfin_date_str]\n";
+      $unmapped_count++;
+      next;
+   }
+
+   my $itune_rating_jellyfin = 0;
+   if ($itunes_rating_raw > 0) {
+      # Convert iTunes 0-100 scale directly to Jellyfin's 0.0-10.0 scale
+      $itune_rating_jellyfin = $itunes_rating_raw / 10;
+   }
 
     # Extract the iTunes Last Played Date
    my $played_date_variant = $track->PlayedDate;
@@ -133,7 +164,23 @@ for (my $i = 1; $i <= $count; $i++) {
       }
       else
       {
-         #print "Empty date '$date_string' for: [$artist] - [$name] (Album: $album)\n";
+         # No date which may be because there is an exclusion rating so need to ensure that is
+         # tranferred to Jellyfin as well.  This is a special case where the track has been rated but not played.
+         if ($itune_rating_jellyfin > 0)
+         {
+            if( !$jellyfin_rating || ($jellyfin_rating != $itune_rating_jellyfin) )
+            {
+               if( !$jellyfin_play_count )
+               {
+                  $jellyfin_play_count = 0;
+               }
+               eval {
+                  $sth->execute($jellyfin_track_id, $user_id, $jellyfin_track_id, $jellyfin_play_count, $jellyfin_date_str, $itune_rating_jellyfin);
+                  print "Synced to Jellyfin (Rating Only): [$artist] - [$name] (Album: $album): Rating updated to $itune_rating_jellyfin\n";
+               };
+               if ($@) { warn "Error writing rating to Jellyfin for: [$artist] - [$name] (Album: $album): [$jellyfin_play_count]: $@\n"; }
+            }
+         }
          next;
       }
    }
@@ -143,36 +190,8 @@ for (my $i = 1; $i <= $count; $i++) {
       next;
    }
 
-   my $itunes_rating_raw = $track->Rating || 0; # Returns 0, 20, 40, 60, 80, or 100
-   my $jellyfin_rating    = undef;
 
-   if ($itunes_rating_raw > 0) {
-      # Convert iTunes 0-100 scale directly to Jellyfin's 0.0-10.0 scale
-      $jellyfin_rating = $itunes_rating_raw / 10;
-   }
 
-    # 5. Look up the Track GUID and its current Jellyfin UserData info
-    my $lookup_sth = $dbh->prepare(<<"SQL");
-        SELECT b.Id, u.LastPlayedDate, u.PlayCount
-        FROM BaseItems b
-        LEFT JOIN UserData u
-            ON b.Id = u.ItemId AND u.UserId = ? AND LOWER(u.CustomDataKey) = LOWER(b.Id)
-        WHERE b.Type = 'MediaBrowser.Controller.Entities.Audio.Audio'
-          AND LOWER(b.Name) = LOWER(?)
-          AND LOWER(b.Album) = LOWER(?)
-          AND LOWER(b.Artists) = LOWER(?)
-        LIMIT 1;
-SQL
-    $lookup_sth->execute($user_id, $name, $album, $artist);
-    my ($jellyfin_track_id, $jellyfin_date_str, $jellyfin_play_count) = $lookup_sth->fetchrow_array();
-    $lookup_sth->finish();
-
-    # Report when there is no Jellyfin DB entry for the track
-    if (!$jellyfin_track_id) {
-        print "WARN Unmapped Track: No Jellyfin DB Entry found for: [$artist] - [$name] (Album: $album)\n";
-        $unmapped_count++;
-        next;
-    }
 
     # Parse Jellyfin's timestamp if it exists
     my $jellyfin_time = undef;
@@ -198,11 +217,23 @@ SQL
 
     # Scenario B: Jellyfin has a more recent listen -> Update iTunes
     elsif ($jellyfin_time && (!$itunes_time || $jellyfin_time > $itunes_time)) {
-        my $new_epoch = $jellyfin_time->epoch;
-        eval {
-            $track->{PlayedDate} = $new_epoch;
-            print "Synced ?? iTunes (Date Only): [$artist] - [$name] (Album: $album): $jellyfin_time\n";
-        };
+      eval {
+      # NB. Can't directly update lastplayed.
+        my $current_itunes_count = $track->PlayedCount || 0;
+
+        # 2. If Jellyfin has a higher number, we align iTunes' count to match
+        # If they match but Jellyfin is newer, we bump it by 1 to force a date overwrite
+        my $new_count = $jellyfin_play_count;
+        if ($new_count <= $current_itunes_count) {
+            $new_count = $current_itunes_count + 1;
+        }
+
+        # 3. Write the count variable back to iTunes over the COM bridge
+        # This action forces the iTunes UI engine to update Last Played to the current time.
+        $track->{PlayedCount} = $new_count;
+
+         print "Synced iTunes (Count++): [$artist] - [$name] (Album: $album) : $new_count\n";
+      };
         if ($@) { warn "Error writing to iTunes for: [$artist] - [$name] (Album: $album): $@\n"; }
     }
 }
