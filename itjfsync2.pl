@@ -26,12 +26,13 @@ my $dbh = DBI->connect("dbi:SQLite:dbname=$jellyfin_db_path", "", "", {
 
 # Prepare the SQL statement for writing to Jellyfin
 my $sth = $dbh->prepare(<<"SQL");
-INSERT INTO UserData (ItemId, UserId, CustomDataKey, PlayCount,
-                      LastPlayedDate, IsFavorite, PlaybackPositionTicks, Played)
-VALUES (?, ?, ?, ?, ?, 0, 0, 1)
+INSERT INTO UserData (ItemId, UserId, CustomDataKey, PlayCount, LastPlayedDate, Rating,
+                      IsFavorite, PlaybackPositionTicks, Played)
+VALUES (?, ?, ?, ?, ?, ?, 0, 0, 1)
 ON CONFLICT(ItemId, UserId, CustomDataKey) DO UPDATE SET
     PlayCount = excluded.PlayCount,
-    LastPlayedDate = excluded.LastPlayedDate;
+    LastPlayedDate = excluded.LastPlayedDate,
+    Rating = excluded.Rating;
 SQL
 
 # 3. Connect to iTunes via COM
@@ -103,7 +104,7 @@ for (my $i = 1; $i <= $count; $i++) {
       }
       else
       {
-         print "Empty date '$date_string' for: [$artist] - [$name] (Album: $album)\n";
+         #print "Empty date '$date_string' for: [$artist] - [$name] (Album: $album)\n";
          next;
       }
    }
@@ -111,6 +112,14 @@ for (my $i = 1; $i <= $count; $i++) {
    {
       print "No last played date for: [$artist] - [$name] (Album: $album)\n";
       next;
+   }
+
+   my $itunes_rating_raw = $track->Rating || 0; # Returns 0, 20, 40, 60, 80, or 100
+   my $jellyfin_rating    = undef;
+
+   if ($itunes_rating_raw > 0) {
+      # Convert iTunes 0-100 scale directly to Jellyfin's 0.0-10.0 scale
+      $jellyfin_rating = $itunes_rating_raw / 10;
    }
 
     # 5. Look up the Track GUID and its current Jellyfin UserData info
@@ -152,8 +161,8 @@ SQL
     # Scenario A: iTunes has a more recent listen -> Update Jellyfin
     if ($itunes_time && (!$jellyfin_time || $itunes_time > $jellyfin_time)) {
         eval {
-            # $sth->execute($jellyfin_track_id, $user_id, $jellyfin_track_id, $itunes_play_count, $itunes_date_str);
-            # print "Synced to Jellyfin: [$artist] - [$name] (Album: $album): $itunes_date_str\n";
+            $sth->execute($jellyfin_track_id, $user_id, $jellyfin_track_id, $itunes_play_count, $itunes_date_str, $jellyfin_rating);
+            print "Synced to Jellyfin: [$artist] - [$name] (Album: $album): $itunes_date_str\n";
         };
         if ($@) { warn "Error writing to Jellyfin for: [$artist] - [$name] (Album: $album): $@\n"; }
     }
