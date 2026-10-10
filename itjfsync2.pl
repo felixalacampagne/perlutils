@@ -4,6 +4,7 @@ use Win32::OLE;
 use DBI;
 use POSIX qw(strftime);
 use Time::Piece;
+use Getopt::Std;
 
 # Enforces that standard output console windows handle wide printed symbols cleanly
 binmode(STDOUT, ":encoding(UTF-8)");
@@ -12,10 +13,25 @@ binmode(STDOUT, ":encoding(UTF-8)");
 Win32::OLE->Option(CP => Win32::OLE::CP_UTF8);
 
 # 1. Configuration
-my $jellyfin_db_path = 'H:\tmp\jellyfin.db'; # Update to your local or mounted DB path
-my $user_id          = '9C8D1F02-C8B0-4017-8FFF-5527AB26B874';         # Your Jellyfin User GUID
+my $jellyfin_db_path = 'H:\tmp\jellyfin.db';
+my $jfuser = 'admin';
 
-# 2. Connect to the Jellyfin SQLite Database with strict Unicode mappings
+my %opts;
+getopts('u:d:', \%opts);
+
+if( $opts{"d"})
+{
+   $jellyfin_db_path = $opts{"d"};
+}
+
+if( $opts{"u"})
+{
+   $jfuser = $opts{"u"};
+}
+
+my $user_id = undef; #          = '9C8D1F02-C8B0-4017-8FFF-5527AB26B874';         # Your Jellyfin User GUID
+
+# Connect to the Jellyfin SQLite Database with strict Unicode mappings
 print "Connecting to Jellyfin Database...\n";
 my $dbh = DBI->connect("dbi:SQLite:dbname=$jellyfin_db_path", "", "", {
     RaiseError         => 1,
@@ -23,6 +39,19 @@ my $dbh = DBI->connect("dbi:SQLite:dbname=$jellyfin_db_path", "", "", {
     sqlite_unicode     => 1,
     sqlite_string_mode => 4,
 }) or die "Could not connect to database: $DBI::errstr";
+
+# Look up the 32-character Hex ID from the Users table
+my $user_sth = $dbh->prepare("SELECT Id FROM Users WHERE LOWER(Username) = LOWER(?) LIMIT 1;");
+$user_sth->execute($jfuser);
+($user_id) = $user_sth->fetchrow_array();
+$user_sth->finish();
+
+if (!$user_id) {
+    die "ERROR: Could not find a Jellyfin user named '$jfuser' in the database!\n";
+} else {
+    print "Found User ID for '$jfuser': $user_id\n";
+}
+
 
 # Prepare the SQL statement for writing to Jellyfin
 my $sth = $dbh->prepare(<<"SQL");
@@ -181,6 +210,9 @@ SQL
 # 7. Clean up & Final Report Summary
 $sth->finish();
 $dbh->disconnect();
+$itunes = undef;
+undef $itunes;
+
 print "\n========================================\n";
 print "Sync completed successfully.\n";
 print "Total unmapped iTunes tracks missed: $unmapped_count\n";
