@@ -30,7 +30,13 @@ if( $opts{"u"})
    $jfuser = $opts{"u"};
 }
 
-my $user_id = undef; #          = '9C8D1F02-C8B0-4017-8FFF-5527AB26B874';         # Your Jellyfin User GUID
+
+my $user_id = undef; #
+
+print "Connecting to iTunes COM interface...\n";
+my $itunes = Win32::OLE->new('iTunes.Application')
+    or die "iTunes could not be started: " . Win32::OLE->LastError();
+
 
 # Connect to the Jellyfin SQLite Database with strict Unicode mappings
 print "Connecting to Jellyfin Database...\n";
@@ -47,10 +53,13 @@ $user_sth->execute($jfuser);
 ($user_id) = $user_sth->fetchrow_array();
 $user_sth->finish();
 
-if (!$user_id) {
-    die "ERROR: Could not find a Jellyfin user named '$jfuser' in the database!\n";
-} else {
-    print "Found User ID for '$jfuser': $user_id\n";
+if (!$user_id) 
+{
+   die "ERROR: Could not find a Jellyfin user named '$jfuser' in the database!\n";
+} 
+else 
+{
+   print "Found User ID for '$jfuser': $user_id\n";
 }
 
 
@@ -65,24 +74,19 @@ ON CONFLICT(ItemId, UserId, CustomDataKey) DO UPDATE SET
     Rating = excluded.Rating;
 SQL
 
-# 3. Connect to iTunes via COM
-print "Connecting to iTunes COM interface...\n";
-my $itunes = Win32::OLE->new('iTunes.Application')
-    or die "iTunes could not be started: " . Win32::OLE->LastError();
-
 my $library_source = $itunes->LibrarySource;
 my $playlist       = $library_source->Playlists->ItemByName("Music");
 my $tracks         = $playlist->Tracks;
 my $count          = $tracks->Count;
 
-print "Found $count tracks in iTunes. Starting bidirectional sync with trimmed lookup values...\n";
+print "Found $count tracks in iTunes. Starting bidirectional sync...\n";
 
 my $unmapped_count = 0;
 my $processed_Count = 0;
 # 4. Process Tracks
 for (my $i = 1; $i <= $count; $i++) {
     $processed_Count++;
-    print ("Processing track $processed_Count of $count...\n") if ($processed_Count % 10 == 0);
+    print ("Processing track $processed_Count of $count...\n") if ($processed_Count % 200 == 0);
     my $track = $tracks->Item($i);
     next unless $track;
 
@@ -116,7 +120,7 @@ SQL
 
    # Report when there is no Jellyfin DB entry for the track
    if (!$jellyfin_track_id) {
-      print "WARN Unmapped Track: No Jellyfin DB Entry found for: [$artist] - [$name] (Album: $album)\n";
+      print "WARN: $artist: $album: $name: Unmapped Track: No Jellyfin DB Entry found\n";
       $unmapped_count++;
       next;
    }
@@ -130,13 +134,8 @@ SQL
    if ($itunes_rating_raw > 0) {
       # Convert iTunes 0-100 scale directly to Jellyfin's 0.0-10.0 scale
       $itune_rating_jellyfin = $itunes_rating_raw / 10;
+      # print "it rating: raw [$itunes_rating_raw] cnv [$itune_rating_jellyfin]\n";
    }
-
-   # There is a problem with the dates probably due to a mismatch in local vs GMT. The times appeared to
-   # be correct when syncing on Tufty using the real JF DB and a copy of the minnie IT db however when I
-   # then ran the script on minnie, using the minnie iTunes and the real JF DB all of the iTunes dates were
-   # updated. The offset appeared to be 3600 (1 hour) or 7200 (2 hours). Maybe this is something to do with whether
-   # the date in question during summertime or not.
 
    # Extract the iTunes Last Played Date
    my $played_date_variant = $track->PlayedDate;
@@ -177,7 +176,7 @@ SQL
 
          # If any patterns match cleanly, map the string output for your Jellyfin comparisons
          if (!$itunes_time) {
-            warn "Could not match date string format for value: '$date_string'\n";
+            warn "WARN: $artist: $album: $name: unrecognized date format: '$date_string'\n";
          }
          else
          {
@@ -198,9 +197,9 @@ SQL
                }
                eval {
                   $sth->execute($jellyfin_track_id, $user_id, $jellyfin_track_id, $jellyfin_play_count, $jellyfin_date_str, $itune_rating_jellyfin);
-                  print "it>jf (Rating Only): [$artist] - [$name] (Album: $album): Rating updated to $itune_rating_jellyfin\n";
+                  print "it>jf (Rating Only): $artist: $album: $name: Rating updated to $itune_rating_jellyfin\n";
                };
-               if ($@) { warn "Error writing rating to Jellyfin for: [$artist] - [$name] (Album: $album): [$jellyfin_play_count]: $@\n"; }
+               if ($@) { warn "WARN $artist: $album: $name: Error writing rating to Jellyfin: [$jellyfin_play_count]: $@\n"; }
             }
          }
          next;
@@ -250,7 +249,7 @@ SQL
          $sth->execute($jellyfin_track_id, $user_id, $jellyfin_track_id, $itunes_play_count, $itunes_date_str, $rating);
          #print "Synced to Jellyfin: [$artist] - [$name] (Album: $album): $itunes_date_str\n";
       };
-        if ($@) { warn "Error writing to Jellyfin for: [$artist] - [$name] (Album: $album): $@\n"; }
+        if ($@) { warn "WARN: $artist: $album: $name: Error writing to Jellyfin: $@\n"; }
     }
 
     # Scenario B: Jellyfin has a more recent listen -> Update iTunes
@@ -280,7 +279,7 @@ SQL
          $track->{PlayedDate} = $date_for_itunes;
          #print "Synced ?? iTunes (Date Only): [$artist] - [$name] (Album: $album): $date_for_itunes\n";
       };
-      if ($@) { warn "Error writing to iTunes for: [$artist] - [$name] (Album: $album): $@\n"; }
+      if ($@) { warn "WARN: $artist: $album: $name: Error writing to iTunes: $@\n"; }
 
       eval {
          my $current_itunes_count = $track->PlayedCount || 0;
@@ -290,12 +289,12 @@ SQL
          if ($current_itunes_count == 0 && $jellyfin_play_count > 0)
          {
             $track->{PlayedCount} = $new_count;
-            print "Synced iTunes (Count): [$artist] - [$name] (Album: $album) : $new_count\n";
+            print "jf->it: $artist: $album: $name: Synced Count: $new_count\n";
          }
 
 
       };
-        if ($@) { warn "Error writing to iTunes for: [$artist] - [$name] (Album: $album): $@\n"; }
+        if ($@) { warn "WARN: $artist: $album: $name: Error writing to iTunes: $@\n"; }
     }
 }
 
