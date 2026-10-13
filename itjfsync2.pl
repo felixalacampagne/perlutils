@@ -1,8 +1,8 @@
 use strict;
 use warnings;
-use Win32::OLE;
+use Win32::OLE;          # cpan Win32::OLE
 use Win32::OLE::Variant;
-use DBI;
+use DBI;                 # cpan DBI  cpan DBD::SQLite
 use POSIX qw(strftime);
 use Time::Piece;
 use Getopt::Std;
@@ -58,7 +58,7 @@ if (!$user_id) {
 my $sth = $dbh->prepare(<<"SQL");
 INSERT INTO UserData (ItemId, UserId, CustomDataKey, PlayCount, LastPlayedDate, Rating,
                       IsFavorite, PlaybackPositionTicks, Played)
-VALUES (?, ?, ?, ?, ?, ?, 0, 0, 1)
+VALUES (?, ?, LOWER(?), ?, ?, ?, 0, 0, 1)
 ON CONFLICT(ItemId, UserId, CustomDataKey) DO UPDATE SET
     PlayCount = excluded.PlayCount,
     LastPlayedDate = excluded.LastPlayedDate,
@@ -78,9 +78,11 @@ my $count          = $tracks->Count;
 print "Found $count tracks in iTunes. Starting bidirectional sync with trimmed lookup values...\n";
 
 my $unmapped_count = 0;
-
+my $processed_Count = 0;
 # 4. Process Tracks
 for (my $i = 1; $i <= $count; $i++) {
+    $processed_Count++;
+    print ("Processing track $processed_Count of $count...\n") if ($processed_Count % 10 == 0);
     my $track = $tracks->Item($i);
     next unless $track;
 
@@ -88,7 +90,7 @@ for (my $i = 1; $i <= $count; $i++) {
     my $album  = $track->Album  || '';
     my $artist = $track->Artist || '';
 
-   # ?? NEW STEP: Trim leading and trailing whitespaces cleanly via Regex
+   # Trim leading and trailing whitespaces cleanly via Regex
    # \s+ matches any whitespace characters. ^ looks at the start, $ looks at the end.
    $name   =~ s/^\s+|\s+$//g;
    $album  =~ s/^\s+|\s+$//g;
@@ -98,7 +100,7 @@ for (my $i = 1; $i <= $count; $i++) {
 
    # 5. Look up the Track GUID and its current Jellyfin UserData info
    my $lookup_sth = $dbh->prepare(<<"SQL");
-      SELECT b.Id, u.LastPlayedDate, u.PlayCount, u.Rating
+      SELECT b.Id, strftime('%Y-%m-%d %H:%M:%S', u.LastPlayedDate), u.PlayCount, u.Rating
       FROM BaseItems b
       LEFT JOIN UserData u
          ON b.Id = u.ItemId AND u.UserId = ? AND LOWER(u.CustomDataKey) = LOWER(b.Id)
@@ -130,27 +132,35 @@ SQL
       $itune_rating_jellyfin = $itunes_rating_raw / 10;
    }
 
-    # Extract the iTunes Last Played Date
+   # There is a problem with the dates probably due to a mismatch in local vs GMT. The times appeared to
+   # be correct when syncing on Tufty using the real JF DB and a copy of the minnie IT db however when I
+   # then ran the script on minnie, using the minnie iTunes and the real JF DB all of the iTunes dates were
+   # updated. The offset appeared to be 3600 (1 hour) or 7200 (2 hours). Maybe this is something to do with whether
+   # the date in question during summertime or not.
+
+   # Extract the iTunes Last Played Date
    my $played_date_variant = $track->PlayedDate;
    my $itunes_time         = undef;
-
-   # For some reason the Jellyfin updates keep happening even though correct the values are in the DB.
-   # This maybe because the seconds are lost so I've removed the seconds from all date formats.
-   # Actually it was more likely due to the localtime vs GMT mismatch so canprobably restore the seconds.
+   my $it_orig_date_str    = 'N\A';
    if ($played_date_variant && ref($played_date_variant))
    {
       # Force the COM object to coerce itself into a strict text string (VT_BSTR = 8).
-      # WARNING: The time is a LOCAL time. localtime->strptime parses the date string as a local time and converts to GMT.
+      # WARNING: Seems iTunes time is a LOCAL time. localtime->strptime parses the date string as a local time and converts to GMT.
       # The Jellyfin DB stores the time in GMT so this is a necessary step.
+      # Aaaggghhh! On minnie the iTunes time is GMT, on tufty it is localtime
+      # That doesn't seem to right either.
+      # The date string returned by the COM object is the same as the value displayed in iTunes which
+      # is therefore presumably the localtime.
       my $date_string = eval { $played_date_variant->As(8); };
-
+      $it_orig_date_str = $date_string;
       if ($date_string && $date_string ne '' && $date_string ne '00:00:00')
       {
-         $date_string = substr($date_string, 0, 19); # Trim to "MM/DD/YYYY HH:MM:SS" or "DD/MM/YYYY HH:MM:SS" depending on locale
+         $date_string = substr($date_string, 0, 19);
          # Dynamically parse the resulting text string based on your local Windows time layout
          eval {
             # Layout Option 1: Standard European/UK format (e.g., "10/10/2026 17:00:15")
             $itunes_time = localtime->strptime($date_string, "%d/%m/%Y %H:%M:%S");
+
          };
          if ($@) {
             eval {
@@ -169,6 +179,10 @@ SQL
          if (!$itunes_time) {
             warn "Could not match date string format for value: '$date_string'\n";
          }
+         else
+         {
+            $itunes_time = gmtime($itunes_time->epoch);
+         }
       }
       else
       {
@@ -184,7 +198,7 @@ SQL
                }
                eval {
                   $sth->execute($jellyfin_track_id, $user_id, $jellyfin_track_id, $jellyfin_play_count, $jellyfin_date_str, $itune_rating_jellyfin);
-                  print "Synced to Jellyfin (Rating Only): [$artist] - [$name] (Album: $album): Rating updated to $itune_rating_jellyfin\n";
+                  print "it>jf (Rating Only): [$artist] - [$name] (Album: $album): Rating updated to $itune_rating_jellyfin\n";
                };
                if ($@) { warn "Error writing rating to Jellyfin for: [$artist] - [$name] (Album: $album): [$jellyfin_play_count]: $@\n"; }
             }
@@ -206,9 +220,14 @@ SQL
       $jellyfin_date_str = substr($jellyfin_date_str, 0, 19);
       eval
       {
-         $jellyfin_time = Time::Piece->strptime($jellyfin_date_str, "%Y-%m-%d %H:%M:%S");
+         $jellyfin_time = Time::Piece->strptime($jellyfin_date_str, "%Y-%m-%d %H:%M:%S"); # returns GMT time
       };
    }
+   else
+   {
+      $jellyfin_date_str = "";
+   }
+
 
    # 6. Evaluation Logic
    my $itunes_play_count = $track->PlayedCount || 0;
@@ -218,13 +237,19 @@ SQL
       my $itep = $itunes_time->epoch;
       my $jfep = $jellyfin_time ? $jellyfin_time->epoch : 0;
       my $test = ($itep > $jfep) ? "TRUE" : "FALSE";
-      print("it>jf Times: itunes $itep > jellyfin $jfep : $test \n");
+      # print("it>jf Times: itunes $itep > jellyfin $jfep : $test \n");
       my $itunes_date_str = $itunes_time->strftime("%Y-%m-%d %H:%M:%S");
+      $itunes_date_str = $itunes_date_str;
       my $rating = $itune_rating_jellyfin > $jellyfin_rating ? $itune_rating_jellyfin : $jellyfin_rating;
-     eval {
-            $sth->execute($jellyfin_track_id, $user_id, $jellyfin_track_id, $itunes_play_count, $itunes_date_str, $rating);
-            print "Synced to Jellyfin: [$artist] - [$name] (Album: $album): $itunes_date_str\n";
-        };
+
+      print "it>jf: $artist: $album: $name: itORIG:$it_orig_date_str itGMT:$itunes_time itDTSTR:$itunes_date_str jfORIG:$jellyfin_date_str itep:$itep jfep: $jfep\n";
+      # goto CLEANEXIT;
+
+      eval
+      {
+         $sth->execute($jellyfin_track_id, $user_id, $jellyfin_track_id, $itunes_play_count, $itunes_date_str, $rating);
+         #print "Synced to Jellyfin: [$artist] - [$name] (Album: $album): $itunes_date_str\n";
+      };
         if ($@) { warn "Error writing to Jellyfin for: [$artist] - [$name] (Album: $album): $@\n"; }
     }
 
@@ -234,19 +259,26 @@ SQL
       my $jfep = $jellyfin_time->epoch;
       my $itep = $itunes_time ? $itunes_time->epoch : 0;
       my $test = ($jfep > $itep) ? "TRUE" : "FALSE";
-      print("jf>it Times: jellyfin $jfep > itunes $itep : $test\n");
       # "%m/%d/%Y %I:%M:%S %p"  doesn't seem to work
       # but 'Jan 1,1970' does seems to work
       # %b %e, %Y   YES! It worked
       # %b %e, %Y %H:%M:%S This seems to work as well - although a localtime correction seems to be applied to it
       # ie. the date displayed in Perl is 'GMT' but the date displayed in iTunes is summertime CET (GMT+2).
-      my $date_for_itunes = localtime($jellyfin_time)->strftime("%b %e, %Y %H:%M:%S");
-      # print "Formatted datestring for variant date: $date_for_itunes\n";
+
+      # On tufty the JF date must be converted to local time to display correctly in iTunes
+      # but on minnie converting the JF date results in a display time two hours ahead, ie.
+      # JF 15:33 converted to localtime is 17:33 and displayed in iTunes as 19:33.
+      # I have no idea why this is happening so have no clue how to prevent it. Since this is
+      # intended for use on minnie I'll use gmtime.
+      # my $date_for_itunes = localtime($jfep)->strftime("%b %e, %Y %H:%M:%S");
+      my $date_for_itunes = gmtime($jfep)->strftime("%b %e, %Y %H:%M:%S");
       $date_for_itunes = Variant(VT_DATE, $date_for_itunes);
-      # print "Updating iTunes Last Played Date for: [$artist] - [$name] (Album: $album): $date_for_itunes\n";
+
+      print "jf>it: $artist: $album: $name: jfORIG:$jellyfin_date_str jfTIME:$jellyfin_time itORIG:$it_orig_date_str itGMT:$itunes_time jfDTSTR:$date_for_itunes itep:$itep jfep: $jfep\n";
+      # goto CLEANEXIT;
       eval {
          $track->{PlayedDate} = $date_for_itunes;
-         print "Synced ?? iTunes (Date Only): [$artist] - [$name] (Album: $album): $date_for_itunes\n";
+         #print "Synced ?? iTunes (Date Only): [$artist] - [$name] (Album: $album): $date_for_itunes\n";
       };
       if ($@) { warn "Error writing to iTunes for: [$artist] - [$name] (Album: $album): $@\n"; }
 
@@ -268,12 +300,15 @@ SQL
 }
 
 # 7. Clean up & Final Report Summary
-$sth->finish();
-$dbh->disconnect();
-$itunes = undef;
-undef $itunes;
+
 
 print "\n========================================\n";
 print "Sync completed successfully.\n";
 print "Total unmapped iTunes tracks missed: $unmapped_count\n";
 print "========================================\n";
+
+CLEANEXIT:
+$sth->finish();
+$dbh->disconnect();
+$itunes = undef;
+undef $itunes;
