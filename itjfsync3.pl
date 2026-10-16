@@ -6,6 +6,8 @@ use DBI;                 # cpan DBI  cpan DBD::SQLite
 use POSIX qw(strftime);
 use Time::Piece;
 use Getopt::Std;
+use File::Copy;
+use File::Basename; # Core module to cleanly parse paths, file names, and extensions
 
 # Enforces that standard output console windows handle wide printed symbols cleanly
 binmode(STDOUT, ":encoding(UTF-8)");
@@ -36,6 +38,8 @@ if( $opts{"u"})
    $jfuser = $opts{"u"};
 }
 
+syncfromqueuefile();
+exit;
 
 my $user_id = undef; #
 
@@ -319,6 +323,7 @@ $itunes = undef;
 undef $itunes;
 
 
+
 sub syncfromqueuefile
 {
 
@@ -353,38 +358,69 @@ my $dbh = DBI->connect($dsn, "", "", {
 $dbh->do("PRAGMA busy_timeout = 5000;");
 
 # 5. Prepare the update SQL query
-my $sql = "UPDATE UserData
-           SET LastPlayedDate = ?, Played = 1, PlayCount = PlayCount + 1
-           WHERE ItemId = ? AND UserId = ?";
-my $sth = $dbh->prepare($sql);
+#my $sql = "UPDATE UserData
+#           SET LastPlayedDate = ?, Played = 1, PlayCount = PlayCount + 1
+#           WHERE ItemId = ? AND UserId = ?";
+#my $sth = $dbh->prepare($sql);
+
+my $sth = $dbh->prepare(<<"SQL");
+INSERT INTO UserData (ItemId, UserId, CustomDataKey, PlayCount, LastPlayedDate, Rating,
+                      IsFavorite, PlaybackPositionTicks, Played)
+VALUES (?, ?, LOWER(?), ?, ?, ?, 0, 0, 1)
+ON CONFLICT(ItemId, UserId, CustomDataKey) DO UPDATE SET
+    PlayCount = excluded.PlayCount,
+    LastPlayedDate = excluded.LastPlayedDate,
+    Rating = excluded.Rating;
+SQL
+
+
 
 my $updates_count = 0;
 
-try {
-    # Process each log entry in the array
-    foreach my $line (@lines) {
-        chomp($line);
-        next if $line =~ /^\s*$/; # Skip empty lines
+eval
+{
+   # Process each log entry in the array
+   foreach my $line (@lines)
+   {
+      chomp($line);
+      next if $line =~ /^\s*$/; # Skip empty lines
 
-        my ($item_id, $user_id, $date_played) = split(',', $line);
+      my ($item_id, $user_id, $date_played) = split(',', $line);
 
-        if ($item_id && $user_id && $date_played) {
-            # Execute the query passing values: date_played -> LastPlayedDate, item_id -> ItemId, user_id -> UserId
-            $sth->execute($date_played, $item_id, $user_id);
-            $updates_count++;
-        }
-    }
+      if ($item_id && $user_id && $date_played) {
+         # Execute the query passing values: date_played -> LastPlayedDate, item_id -> ItemId, user_id -> UserId
+         $sth->execute($item_id, $user_id, $item_id, 1, $date_played, 0);
+         $updates_count++;
+      }
+   }
 
     # Commit all changes to the database at once
     $dbh->commit();
     print "Successfully committed $updates_count track(s) to the Jellyfin database.\n";
 
-    # 6. Clear out the queue file now that the database has updated successfully
-    open(my $clear_fh, '>', $queue_file) or die "Cannot clear queue file: $!";
-    close($clear_fh);
-    print "Queue file has been cleared safely.\n";
+    # 6. SAFE BACKUP: Insert timestamp right before the extension [1, 2]
+    # Parse the directory path, filename, and extension dynamically [1]
+    my ($filename, $directory, $extension) = fileparse($queue_file, qr/\.[^.]*$/);
 
-} or do {
+    # Grabs the local calendar properties from the system
+    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
+    my $timestamp = sprintf("%04d%02d%02d_%02d%02d%02d",
+                            $year + 1900, $mon + 1, $mday, $hour, $min, $sec);
+
+    # Reassemble path: C:/Apache24/htdocs/jellyfin_queue_20261016_150000.txt [2]
+    my $backup_file = $directory . $filename . "_" . $timestamp . $extension;
+
+    if (rename($queue_file, $backup_file)) {
+        print "Queue file backed up successfully to: $backup_file\n";
+    } else {
+        warn "Direct rename failed ($!), attempting alternative copy/delete fallback...\n";
+        move($queue_file, $backup_file) or die "CRITICAL ERROR: Failed to move queue file: $!";
+        print "Queue file moved safely via copy-fallback to: $backup_file\n";
+    }
+
+};
+if($@ or $DBI::errstr)
+{
     my $error = $@ || $DBI::errstr;
     # Rollback the database changes so the DB isn't left in a partial state
     $dbh->rollback();
