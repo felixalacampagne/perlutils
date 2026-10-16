@@ -39,7 +39,6 @@ if( $opts{"u"})
 }
 
 syncfromqueuefile();
-exit;
 
 my $user_id = undef; #
 
