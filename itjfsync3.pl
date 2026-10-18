@@ -69,6 +69,9 @@ else
    print "Found User ID for '$jfuser': $user_id\n";
 }
 
+my %jellyfin_track_map = build_jellyfin_track_map($dbh, $user_id);
+print "Loaded Jellyfin track map for '$jfuser': " . scalar(keys %jellyfin_track_map) . " entries\n";
+
 my $it_jf_updates = "";  # ITEM_GUID|USER_GUID|LAST_PLAYED_DATE|RATING
 my $library_source = $itunes->LibrarySource;
 my $playlist       = $library_source->Playlists->ItemByName("Music");
@@ -98,28 +101,20 @@ for (my $i = 1; $i <= $count; $i++) {
 
    my $itunes_rating_raw = $track->Rating || 0; # Returns 0, 20, 40, 60, 80, or 100
 
-   # 5. Look up the Track GUID and its current Jellyfin UserData info
-   my $lookup_sth = $dbh->prepare(<<"SQL");
-      SELECT b.Id, strftime('%Y-%m-%d %H:%M:%S', u.LastPlayedDate), u.PlayCount, u.Rating
-      FROM BaseItems b
-      LEFT JOIN UserData u
-         ON b.Id = u.ItemId AND u.UserId = ? AND LOWER(u.CustomDataKey) = LOWER(b.Id)
-      WHERE b.Type = 'MediaBrowser.Controller.Entities.Audio.Audio'
-         AND LOWER(b.Name) = LOWER(?)
-         AND LOWER(b.Album) = LOWER(?)
-         AND LOWER(b.Artists) = LOWER(?)
-      LIMIT 1;
-SQL
-   $lookup_sth->execute($user_id, $name, $album, $artist);
-   my ($jellyfin_track_id, $jellyfin_date_str, $jellyfin_play_count, $jellyfin_rating) = $lookup_sth->fetchrow_array();
-   $lookup_sth->finish();
+   # 5. Look up the track metadata from the pre-built Jellyfin map
+   my $track_key = build_track_key($artist, $album, $name);
+   my $jf_entry = $jellyfin_track_map{$track_key};
 
-   # Report when there is no Jellyfin DB entry for the track
-   if (!$jellyfin_track_id) {
+   if (!$jf_entry) {
       print "WARN: $artist: $album: $name: Unmapped Track: No Jellyfin DB Entry found\n";
       $unmapped_count++;
       next;
    }
+
+   my $jellyfin_track_id = $jf_entry->{itemid};
+   my $jellyfin_date_str = $jf_entry->{lastplayeddate};
+   my $jellyfin_play_count = $jf_entry->{playcount} || 0;
+   my $jellyfin_rating = defined $jf_entry->{rating} ? $jf_entry->{rating} : 0;
 
    if( !$jellyfin_rating)
    {
@@ -192,7 +187,7 @@ SQL
                   $jellyfin_play_count = 0;
                }
                # ITEM_GUID|USER_GUID|LAST_PLAYED_DATE|RATING
-               $it_jf_updates += "$jellyfin_track_id|$user_id|$jellyfin_date_str|$itune_rating_jellyfin\n";
+               $it_jf_updates .= "$jellyfin_track_id|$user_id|$jellyfin_date_str|$itune_rating_jellyfin\n";
             }
          }
          next;
@@ -282,6 +277,60 @@ CLEANEXIT:
 $dbh->disconnect();
 $itunes = undef;
 undef $itunes;
+
+sub build_jellyfin_track_map {
+   my ($dbh, $user_id) = @_;
+   my %track_map;
+
+   my $sth = $dbh->prepare(<<'SQL');
+      SELECT
+         b.Id AS itemid,
+         b.Name AS name,
+         b.Album AS album,
+         b.Artists AS artist,
+         u.UserId AS userid,
+         strftime('%Y-%m-%d %H:%M:%S', u.LastPlayedDate) AS lastplayeddate,
+         u.PlayCount AS playcount,
+         u.Rating AS rating
+      FROM BaseItems b
+      LEFT JOIN UserData u
+         ON b.Id = u.ItemId AND LOWER(u.CustomDataKey) = LOWER(b.Id)
+      WHERE b.Type = 'MediaBrowser.Controller.Entities.Audio.Audio'
+         AND u.UserId = ?
+SQL
+   $sth->execute($user_id);
+
+   while (my $row = $sth->fetchrow_hashref()) {
+      my $artist = defined $row->{artist} ? $row->{artist} : '';
+      my $album  = defined $row->{album} ? $row->{album} : '';
+      my $name   = defined $row->{name} ? $row->{name} : '';
+      my $key    = build_track_key($artist, $album, $name);
+
+      $track_map{$key} = {
+         userid          => $row->{userid} || $user_id,
+         itemid          => $row->{itemid},
+         lastplayeddate  => $row->{lastplayeddate},
+         playcount       => $row->{playcount} || 0,
+         rating          => defined $row->{rating} ? $row->{rating} : 0,
+      };
+   }
+
+   $sth->finish();
+   return %track_map;
+}
+
+sub build_track_key {
+   my @parts = @_;
+   my @normalized;
+
+   foreach my $part (@parts) {
+      $part = '' unless defined $part;
+      $part =~ s/^\s+|\s+$//g;
+      push @normalized, lc $part;
+   }
+
+   return join("\x1F", @normalized);
+}
 
 sub writeitjfsyncfile
 {
