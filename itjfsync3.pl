@@ -17,7 +17,7 @@ use Unicode::Normalize qw(NFC);
 # processor which runs on the NAS as well as updates to this script to select
 # tracks which have no UserData and to handle them appropriately.
 
-const VERSION="4.0.0";
+my $VERSION="4.0.0";
 
 # Enforces that standard output console windows handle wide printed symbols cleanly
 binmode(STDOUT, ":encoding(UTF-8)");
@@ -87,6 +87,15 @@ my $library_source = $itunes->LibrarySource;
 my $playlist       = $library_source->Playlists->ItemByName("Music");
 my $tracks         = $playlist->Tracks;
 my $count          = $tracks->Count;
+my $lookup_sth = $dbh->prepare(<<"SQL");
+   SELECT b.Id
+   FROM BaseItems b
+   WHERE b.Type = 'MediaBrowser.Controller.Entities.Audio.Audio'
+      AND LOWER(b.Name) = LOWER(?)
+      AND LOWER(b.Album) = LOWER(?)
+      AND LOWER(b.Artists) = LOWER(?)
+   LIMIT 1;
+SQL
 
 print "Found $count tracks in iTunes. Starting bidirectional sync...\n";
 
@@ -105,38 +114,7 @@ for (my $i = 1; $i <= $count; $i++) {
    my $itunes_rating_raw = $track->Rating || 0; # Returns 0, 20, 40, 60, 80, or 100
    my $played_date_variant = $track->PlayedDate;
 
-   # Trim leading and trailing whitespaces cleanly via Regex
-   # \s+ matches any whitespace characters. ^ looks at the start, $ looks at the end.
-   $name   =~ s/^\s+|\s+$//g;
-   $album  =~ s/^\s+|\s+$//g;
-   $artist =~ s/^\s+|\s+$//g;
-
-
-   # 5. Look up the track metadata from the pre-built Jellyfin map
-   my $track_key = build_track_key($artist, $album, $name);
-   my $jf_entry = $jellyfin_track_map{$track_key};
-
-   if (!$jf_entry)
-   {
-      if( $played_date_variant && ref($played_date_variant))
-      {
-         my $debug_key = build_track_key($artist, $album, $name);
-         print "WARN: $artist: $album: $name: Unmapped played track: No Jellyfin UserData Entry found (key=[$debug_key])\n";
-         $unmapped_count++;
-         next;
-      }
-   }
-
-   my $jellyfin_track_id = $jf_entry->{itemid};
-   my $jellyfin_date_str = $jf_entry->{lastplayeddate};
-   my $jellyfin_play_count = $jf_entry->{playcount} || 0;
-   my $jellyfin_rating = defined $jf_entry->{rating} ? $jf_entry->{rating} : 0;
-
-   if( !$jellyfin_rating)
-   {
-      $jellyfin_rating = 0;
-   }
-
+   # Process iTunes rating: iTunes uses a 0-100 scale, while Jellyfin uses a 0.0-10.0 scale. Convert accordingly.
    my $itune_rating_jellyfin = 0;
    if ($itunes_rating_raw > 0) {
       # Convert iTunes 0-100 scale directly to Jellyfin's 0.0-10.0 scale
@@ -144,18 +122,12 @@ for (my $i = 1; $i <= $count; $i++) {
       # print "it rating: raw [$itunes_rating_raw] cnv [$itune_rating_jellyfin]\n";
    }
 
+   # Process iTunes last played date
    my $itunes_time         = undef;
    my $it_orig_date_str    = 'N\A';
 
    if ($played_date_variant && ref($played_date_variant))
    {
-      # Force the COM object to coerce itself into a strict text string (VT_BSTR = 8).
-      # WARNING: Seems iTunes time is a LOCAL time. localtime->strptime parses the date string as a local time and converts to GMT.
-      # The Jellyfin DB stores the time in GMT so this is a necessary step.
-      # Aaaggghhh! On minnie the iTunes time is GMT, on tufty it is localtime
-      # That doesn't seem to right either.
-      # The date string returned by the COM object is the same as the value displayed in iTunes which
-      # is therefore presumably the localtime.
       my $date_string = eval { $played_date_variant->As(8); };
       $it_orig_date_str = $date_string;
       if ($date_string && $date_string ne '' && $date_string ne '00:00:00')
@@ -189,28 +161,64 @@ for (my $i = 1; $i <= $count; $i++) {
             $itunes_time = gmtime($itunes_time->epoch);
          }
       }
-      else
+   }
+
+   # Trim leading and trailing whitespaces cleanly via Regex
+   # \s+ matches any whitespace characters. ^ looks at the start, $ looks at the end.
+   $name   =~ s/^\s+|\s+$//g;
+   $album  =~ s/^\s+|\s+$//g;
+   $artist =~ s/^\s+|\s+$//g;
+
+
+   # 5. Look up the track metadata from the pre-built Jellyfin map
+   my $track_key = build_track_key($artist, $album, $name);
+   my $jf_entry = $jellyfin_track_map{$track_key};
+
+   # No Jellyfin userdata for this track - I there is no date then move to next track
+   # else lookup the track in the Jellyfin DB to get the itemid and then write a record to the queue file
+   # else if there is no jellyfin track then next track
+   if (!$jf_entry)
+   {
+      if (!$itunes_time)
       {
-         # No date which may be because there is an exclusion rating so need to ensure that is
-         # tranferred to Jellyfin as well.  This is a special case where the track has been rated but not played.
-         if ($itune_rating_jellyfin > 0)
-         {
-            if( $jellyfin_rating != $itune_rating_jellyfin )
-            {
-               if( !$jellyfin_play_count )
-               {
-                  $jellyfin_play_count = 0;
-               }
-               # ITEM_GUID|USER_GUID|LAST_PLAYED_DATE|RATING
-               $it_jf_updates .= "$jellyfin_track_id|$user_id|$jellyfin_date_str|$itune_rating_jellyfin\n";
-            }
-         }
          next;
       }
+      $lookup_sth->execute($name, $album, $artist);
+      my ($jellyfin_track_id) = $lookup_sth->fetchrow_array();
+      $lookup_sth->finish();
+
+      my $itunes_date_str = $itunes_time->strftime("%Y-%m-%d %H:%M:%S");
+      # ITEM_GUID|USER_GUID|LAST_PLAYED_DATE|RATING
+      $it_jf_updates .= "$jellyfin_track_id|$user_id|$itunes_date_str|$itune_rating_jellyfin\n";
+      next;
    }
-   else
+
+   my $jellyfin_track_id = $jf_entry->{itemid};
+   my $jellyfin_date_str = $jf_entry->{lastplayeddate};
+   my $jellyfin_play_count = $jf_entry->{playcount} || 0;
+   my $jellyfin_rating = defined $jf_entry->{rating} ? $jf_entry->{rating} : 0;
+
+   if( !$jellyfin_rating)
    {
-      # print "No iTunes last played date for: [$artist] - [$name] (Album: $album)\n";
+      $jellyfin_rating = 0;
+   }
+
+   if (!$itunes_time)
+   {
+      # No date which may be because there is an exclusion rating so need to ensure that is
+      # tranferred to Jellyfin as well.  This is a special case where the track has been rated but not played.
+      if ($itune_rating_jellyfin > 0)
+      {
+         if( $jellyfin_rating != $itune_rating_jellyfin )
+         {
+            if( !$jellyfin_play_count )
+            {
+               $jellyfin_play_count = 0;
+            }
+            # ITEM_GUID|USER_GUID|LAST_PLAYED_DATE|RATING
+            $it_jf_updates .= "$jellyfin_track_id|$user_id|$jellyfin_date_str|$itune_rating_jellyfin\n";
+         }
+      }
       next;
    }
 
@@ -289,6 +297,7 @@ print "Total unmapped iTunes tracks missed: $unmapped_count\n";
 print "========================================\n";
 
 CLEANEXIT:
+
 $dbh->disconnect();
 $itunes = undef;
 undef $itunes;
