@@ -8,6 +8,16 @@ use Time::Piece;
 use Getopt::Std;
 use File::Copy;
 use File::Basename; # Core module to cleanly parse paths, file names, and extensions
+use Unicode::Normalize qw(NFC);
+
+# WARNING: This does not handle the case where the Jellyfin DB does not contain a UserData
+# entry for a track that has been played in iTunes.  In that case, the track will be
+# skipped and not synced to Jellyfin.
+# To handle such missing tracks will require an update to the itunes-update file
+# processor which runs on the NAS as well as updates to this script to select
+# tracks which have no UserData and to handle them appropriately.
+
+const VERSION="4.0.0";
 
 # Enforces that standard output console windows handle wide printed symbols cleanly
 binmode(STDOUT, ":encoding(UTF-8)");
@@ -84,14 +94,16 @@ my $unmapped_count = 0;
 my $processed_Count = 0;
 # 4. Process Tracks
 for (my $i = 1; $i <= $count; $i++) {
-    $processed_Count++;
-    print ("Processing track $processed_Count of $count...\n") if ($processed_Count % 200 == 0);
-    my $track = $tracks->Item($i);
-    next unless $track;
+   $processed_Count++;
+   print ("Processing track $processed_Count of $count...\n") if ($processed_Count % 200 == 0);
+   my $track = $tracks->Item($i);
+   next unless $track;
 
-    my $name   = $track->Name   || '';
-    my $album  = $track->Album  || '';
-    my $artist = $track->Artist || '';
+   my $name   = $track->Name   || '';
+   my $album  = $track->Album  || '';
+   my $artist = $track->Artist || '';
+   my $itunes_rating_raw = $track->Rating || 0; # Returns 0, 20, 40, 60, 80, or 100
+   my $played_date_variant = $track->PlayedDate;
 
    # Trim leading and trailing whitespaces cleanly via Regex
    # \s+ matches any whitespace characters. ^ looks at the start, $ looks at the end.
@@ -99,16 +111,20 @@ for (my $i = 1; $i <= $count; $i++) {
    $album  =~ s/^\s+|\s+$//g;
    $artist =~ s/^\s+|\s+$//g;
 
-   my $itunes_rating_raw = $track->Rating || 0; # Returns 0, 20, 40, 60, 80, or 100
 
    # 5. Look up the track metadata from the pre-built Jellyfin map
    my $track_key = build_track_key($artist, $album, $name);
    my $jf_entry = $jellyfin_track_map{$track_key};
 
-   if (!$jf_entry) {
-      print "WARN: $artist: $album: $name: Unmapped Track: No Jellyfin DB Entry found\n";
-      $unmapped_count++;
-      next;
+   if (!$jf_entry)
+   {
+      if( $played_date_variant && ref($played_date_variant))
+      {
+         my $debug_key = build_track_key($artist, $album, $name);
+         print "WARN: $artist: $album: $name: Unmapped played track: No Jellyfin UserData Entry found (key=[$debug_key])\n";
+         $unmapped_count++;
+         next;
+      }
    }
 
    my $jellyfin_track_id = $jf_entry->{itemid};
@@ -128,10 +144,9 @@ for (my $i = 1; $i <= $count; $i++) {
       # print "it rating: raw [$itunes_rating_raw] cnv [$itune_rating_jellyfin]\n";
    }
 
-   # Extract the iTunes Last Played Date
-   my $played_date_variant = $track->PlayedDate;
    my $itunes_time         = undef;
    my $it_orig_date_str    = 'N\A';
+
    if ($played_date_variant && ref($played_date_variant))
    {
       # Force the COM object to coerce itself into a strict text string (VT_BSTR = 8).
@@ -325,6 +340,10 @@ sub build_track_key {
 
    foreach my $part (@parts) {
       $part = '' unless defined $part;
+      $part = NFC($part);
+      $part =~ s/[\x{2018}\x{2019}\x{201B}\x{2032}]/'/g;
+      $part =~ s/[\x{201C}\x{201D}\x{2033}]/"/g;
+      $part =~ s/\s+/ /g;
       $part =~ s/^\s+|\s+$//g;
       push @normalized, lc $part;
    }
