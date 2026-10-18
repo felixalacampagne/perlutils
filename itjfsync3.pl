@@ -17,7 +17,7 @@ Win32::OLE->Option(CP => Win32::OLE::CP_UTF8);
 
 # 1. Configuration
 my $jellyfin_db_path = 'H:/tmp/jellyfin.db';
-my $queue_file = 'H:/tmp/jellyfin_queue.csv';
+my $queue_file = 'H:/tmp/itunes-updates.txt';
 my $jfuser = 'admin';
 
 my %opts;
@@ -37,8 +37,6 @@ if( $opts{"u"})
 {
    $jfuser = $opts{"u"};
 }
-
-syncfromqueuefile();
 
 my $user_id = undef; #
 
@@ -71,18 +69,7 @@ else
    print "Found User ID for '$jfuser': $user_id\n";
 }
 
-
-# Prepare the SQL statement for writing to Jellyfin
-my $sth = $dbh->prepare(<<"SQL");
-INSERT INTO UserData (ItemId, UserId, CustomDataKey, PlayCount, LastPlayedDate, Rating,
-                      IsFavorite, PlaybackPositionTicks, Played)
-VALUES (?, ?, LOWER(?), ?, ?, ?, 0, 0, 1)
-ON CONFLICT(ItemId, UserId, CustomDataKey) DO UPDATE SET
-    PlayCount = excluded.PlayCount,
-    LastPlayedDate = excluded.LastPlayedDate,
-    Rating = excluded.Rating;
-SQL
-
+my $it_jf_updates = "";  # ITEM_GUID|USER_GUID|LAST_PLAYED_DATE|RATING
 my $library_source = $itunes->LibrarySource;
 my $playlist       = $library_source->Playlists->ItemByName("Music");
 my $tracks         = $playlist->Tracks;
@@ -204,11 +191,8 @@ SQL
                {
                   $jellyfin_play_count = 0;
                }
-               eval {
-                  $sth->execute($jellyfin_track_id, $user_id, $jellyfin_track_id, $jellyfin_play_count, $jellyfin_date_str, $itune_rating_jellyfin);
-                  print "it>jf (Rating Only): $artist: $album: $name: Rating updated to $itune_rating_jellyfin\n";
-               };
-               if ($@) { warn "WARN $artist: $album: $name: Error writing rating to Jellyfin: [$jellyfin_play_count]: $@\n"; }
+               # ITEM_GUID|USER_GUID|LAST_PLAYED_DATE|RATING
+               $it_jf_updates += "$jellyfin_track_id|$user_id|$jellyfin_date_str|$itune_rating_jellyfin\n";
             }
          }
          next;
@@ -252,33 +236,13 @@ SQL
 
       print "it>jf: $artist: $album: $name: itORIG:$it_orig_date_str itGMT:$itunes_time itDTSTR:$itunes_date_str jfORIG:$jellyfin_date_str itep:$itep jfep: $jfep\n";
       # goto CLEANEXIT;
-
-      eval
-      {
-         $sth->execute($jellyfin_track_id, $user_id, $jellyfin_track_id, $itunes_play_count, $itunes_date_str, $rating);
-         #print "Synced to Jellyfin: [$artist] - [$name] (Album: $album): $itunes_date_str\n";
-      };
-        if ($@) { warn "WARN: $artist: $album: $name: Error writing to Jellyfin: $@\n"; }
+      $it_jf_updates .= "$jellyfin_track_id|$user_id|$itunes_date_str|$rating\n";
     }
-
     # Scenario B: Jellyfin has a more recent listen -> Update iTunes
     elsif ($jellyfin_time && (!$itunes_time || $jellyfin_time > $itunes_time)) {
 
       my $jfep = $jellyfin_time->epoch;
       my $itep = $itunes_time ? $itunes_time->epoch : 0;
-      my $test = ($jfep > $itep) ? "TRUE" : "FALSE";
-      # "%m/%d/%Y %I:%M:%S %p"  doesn't seem to work
-      # but 'Jan 1,1970' does seems to work
-      # %b %e, %Y   YES! It worked
-      # %b %e, %Y %H:%M:%S This seems to work as well - although a localtime correction seems to be applied to it
-      # ie. the date displayed in Perl is 'GMT' but the date displayed in iTunes is summertime CET (GMT+2).
-
-      # On tufty the JF date must be converted to local time to display correctly in iTunes
-      # but on minnie converting the JF date results in a display time two hours ahead, ie.
-      # JF 15:33 converted to localtime is 17:33 and displayed in iTunes as 19:33.
-      # I have no idea why this is happening so have no clue how to prevent it. Since this is
-      # intended for use on minnie I'll use gmtime.
-      # my $date_for_itunes = localtime($jfep)->strftime("%b %e, %Y %H:%M:%S");
       my $date_for_itunes = gmtime($jfep)->strftime("%b %e, %Y %H:%M:%S");
       $date_for_itunes = Variant(VT_DATE, $date_for_itunes);
 
@@ -303,12 +267,11 @@ SQL
 
 
       };
-        if ($@) { warn "WARN: $artist: $album: $name: Error writing to iTunes: $@\n"; }
+      if ($@) { warn "WARN: $artist: $album: $name: Error writing to iTunes: $@\n"; }
     }
 }
 
-# 7. Clean up & Final Report Summary
-
+writeitjfsyncfile($it_jf_updates);
 
 print "\n========================================\n";
 print "Sync completed successfully.\n";
@@ -316,119 +279,49 @@ print "Total unmapped iTunes tracks missed: $unmapped_count\n";
 print "========================================\n";
 
 CLEANEXIT:
-$sth->finish();
 $dbh->disconnect();
 $itunes = undef;
 undef $itunes;
 
-
-
-sub syncfromqueuefile
+sub writeitjfsyncfile
 {
+   my ($data) = @_;
+   if ($data && $data ne '')
+   {
+      backupfile($queue_file);
 
-# 1. Configuration Paths
-# Adjust the text file queue path if necessary
-
-# The UNC network path to your UGREEN NAS Jellyfin database
-my $db_path    = $jellyfin_db_path;
-
-# 2. Safety Check: Verify the queue file exists and isn't empty
-if (!-e $queue_file || -s $queue_file == 0) {
-    print "Queue file is empty or missing. Nothing to sync.\n";
-    exit;
+      open(my $fh, '>>', $queue_file) or die "CRITICAL ERROR: Cannot open queue file for writing: $!";
+      print $fh $data;
+      close($fh);
+      print "Queue file written successfully with updated track data.\n";
+   }
+   else
+   {
+      print "No updates to write to the queue file. It remains unchanged.\n";
+   }
 }
 
-# 3. Read the entries from the queue file
-open(my $fh, '<', $queue_file) or die "CRITICAL ERROR: Cannot open queue file: $!";
-my @lines = <$fh>;
-close($fh);
-
-print "Processing " . scalar(@lines) . " track update entries from queue...\n";
-
-# 4. Connect to the SQLite Database via DBI
-# We set sqlite_use_immediate_transaction to prevent network locks during loops
-my $dsn = "dbi:SQLite:dbname=$db_path";
-my $dbh = DBI->connect($dsn, "", "", {
-    RaiseError => 1,
-    AutoCommit => 0, # Turn off AutoCommit to perform this as a single atomic transaction
-}) or die "CRITICAL DATABASE ERROR: " . $DBI::errstr;
-
-# Set a 5-second busy timeout inside SQLite core to clear network conflicts
-$dbh->do("PRAGMA busy_timeout = 5000;");
-
-# 5. Prepare the update SQL query
-#my $sql = "UPDATE UserData
-#           SET LastPlayedDate = ?, Played = 1, PlayCount = PlayCount + 1
-#           WHERE ItemId = ? AND UserId = ?";
-#my $sth = $dbh->prepare($sql);
-
-my $sth = $dbh->prepare(<<"SQL");
-INSERT INTO UserData (ItemId, UserId, CustomDataKey, PlayCount, LastPlayedDate, Rating,
-                      IsFavorite, PlaybackPositionTicks, Played)
-VALUES (?, ?, LOWER(?), ?, ?, ?, 0, 0, 1)
-ON CONFLICT(ItemId, UserId, CustomDataKey) DO UPDATE SET
-    PlayCount = excluded.PlayCount,
-    LastPlayedDate = excluded.LastPlayedDate,
-    Rating = excluded.Rating;
-SQL
-
-
-
-my $updates_count = 0;
-
-eval
+sub backupfile
 {
-   # Process each log entry in the array
-   foreach my $line (@lines)
-   {
-      chomp($line);
-      next if $line =~ /^\s*$/; # Skip empty lines
+   my ($file) = @_;
 
-      my ($item_id, $user_id, $date_played) = split(',', $line);
-
-      if ($item_id && $user_id && $date_played) {
-         # Execute the query passing values: date_played -> LastPlayedDate, item_id -> ItemId, user_id -> UserId
-         $sth->execute($item_id, $user_id, $item_id, 1, $date_played, 0);
-         $updates_count++;
-      }
+   if (!-e $file || -s $file == 0) {
+      print "$file is empty or missing. Nothing to backup.\n";
+      return;
    }
 
-    # Commit all changes to the database at once
-    $dbh->commit();
-    print "Successfully committed $updates_count track(s) to the Jellyfin database.\n";
+    my ($filename, $directory, $extension) = fileparse($file, qr/\.[^.]*$/);
 
-    # 6. SAFE BACKUP: Insert timestamp right before the extension [1, 2]
-    # Parse the directory path, filename, and extension dynamically [1]
-    my ($filename, $directory, $extension) = fileparse($queue_file, qr/\.[^.]*$/);
-
-    # Grabs the local calendar properties from the system
     my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
     my $timestamp = sprintf("%04d%02d%02d_%02d%02d%02d",
                             $year + 1900, $mon + 1, $mday, $hour, $min, $sec);
 
-    # Reassemble path: C:/Apache24/htdocs/jellyfin_queue_20261016_150000.txt [2]
+
     my $backup_file = $directory . $filename . "_" . $timestamp . $extension;
 
-    if (rename($queue_file, $backup_file)) {
-        print "Queue file backed up successfully to: $backup_file\n";
+    if (copy($file, $backup_file)) {
+        print "$file backed up successfully to: $backup_file\n";
     } else {
-        warn "Direct rename failed ($!), attempting alternative copy/delete fallback...\n";
-        move($queue_file, $backup_file) or die "CRITICAL ERROR: Failed to move queue file: $!";
-        print "Queue file moved safely via copy-fallback to: $backup_file\n";
+        warn "Copy failed ($!)\n";
     }
-
-};
-if($@ or $DBI::errstr)
-{
-    my $error = $@ || $DBI::errstr;
-    # Rollback the database changes so the DB isn't left in a partial state
-    $dbh->rollback();
-    print "CRITICAL FAILURE: Database sync aborted. Error: $error\n";
-    print "The queue file data has been preserved and will be retried on next execution.\n";
-};
-
-# Clean up database handlers
-$sth->finish() if defined $sth;
-$dbh->disconnect() if defined $dbh;
-
 }
