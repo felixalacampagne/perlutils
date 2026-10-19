@@ -9,6 +9,9 @@ use Getopt::Std;
 use File::Copy;
 use File::Basename; # Core module to cleanly parse paths, file names, and extensions
 use Unicode::Normalize qw(NFC);
+use Digest::MD5 qw(md5_hex);
+use Data::Dumper;
+$Data::Dumper::Useqq = 1; # This forces hidden characters like \n to show up clearly
 
 # WARNING: This does not handle the case where the Jellyfin DB does not contain a UserData
 # entry for a track that has been played in iTunes.  In that case, the track will be
@@ -87,15 +90,6 @@ my $library_source = $itunes->LibrarySource;
 my $playlist       = $library_source->Playlists->ItemByName("Music");
 my $tracks         = $playlist->Tracks;
 my $count          = $tracks->Count;
-my $lookup_sth = $dbh->prepare(<<"SQL");
-   SELECT b.Id
-   FROM BaseItems b
-   WHERE b.Type = 'MediaBrowser.Controller.Entities.Audio.Audio'
-      AND LOWER(b.Name) = LOWER(?)
-      AND LOWER(b.Album) = LOWER(?)
-      AND LOWER(b.Artists) = LOWER(?)
-   LIMIT 1;
-SQL
 
 print "Found $count tracks in iTunes. Starting bidirectional sync...\n";
 
@@ -111,10 +105,77 @@ for (my $i = 1; $i <= $count; $i++) {
    my $name   = $track->Name   || '';
    my $album  = $track->Album  || '';
    my $artist = $track->Artist || '';
-   my $itunes_rating_raw = $track->Rating || 0; # Returns 0, 20, 40, 60, 80, or 100
-   my $played_date_variant = $track->PlayedDate;
+   my $it_location = $track->Location || '';
+   if(!$it_location)
+   {
+      print "WARN: Missing iTunes file for track: $artist: $album: $name\n";
+      next;
+   }
 
-   # Process iTunes rating: iTunes uses a 0-100 scale, while Jellyfin uses a 0.0-10.0 scale. Convert accordingly.
+   # print "it: $artist: $album: $name: $it_location\n";
+
+   # Trim leading and trailing whitespaces cleanly via Regex
+   # \s+ matches any whitespace characters. ^ looks at the start, $ looks at the end.
+   $name   =~ s/^\s+|\s+$//g;
+   $album  =~ s/^\s+|\s+$//g;
+   $artist =~ s/^\s+|\s+$//g;
+
+   my $itunes_rating_raw = $track->Rating || 0; # Returns 0, 20, 40, 60, 80, or 100
+
+   # 5. Look up the track metadata from the pre-built Jellyfin map
+   my $track_key = build_track_key($it_location);
+   my $md5 =  md5_hex($track_key);
+   my $jf_entry = $jellyfin_track_map{$md5};
+
+   if (!$jf_entry) {
+      print "WARN: No Jellyfin DB Entry found: $artist: $album: $name: $it_location: [$md5] [$track_key] \n";
+      #print "" . Dumper($track_key) ."\n";
+      #print "" . Dumper(\%jellyfin_track_map) . "\n";
+      $unmapped_count++;
+      my $hash_key_entry = $jellyfin_track_map{"1b23eebe28362ed358ba29bde865eb9e"};
+      my $hash_key = $hash_key_entry->{key};
+
+      # Convert both strings into arrays of their exact byte values
+      my @lookup_bytes = unpack("C*", $track_key);
+      my @hash_bytes   = unpack("C*", $hash_key);
+
+      print "Lookup string length: " . scalar(@lookup_bytes) . " bytes\n";
+      print "Hash key string length:   " . scalar(@hash_bytes) . " bytes\n";
+
+      # Loop through and find exactly where they diverge
+      my $max_len = scalar(@lookup_bytes) > scalar(@hash_bytes) ? scalar(@lookup_bytes) : scalar(@hash_bytes);
+
+      print "\n--- BYTE BY BYTE COMPARISON ---\n";
+      print "POS\tCHAR\tLOOKUP BYTE\tHASH BYTE\n";
+      print "--------------------------------------\n";
+
+      for (my $i = 0; $i < $max_len; $i++) {
+         my $l_byte = $lookup_bytes[$i] // 'END';
+         my $h_byte = $hash_bytes[$i]   // 'END';
+
+         # Get a printable character if possible
+         my $l_char = ($l_byte ne 'END' && $l_byte >= 32 && $l_byte <= 126) ? chr($l_byte) : '?';
+
+         if ($l_byte ne $h_byte) {
+            print "[$i]\t'$l_char'\t$l_byte\t\t$h_byte  <-- MISMATCH HERE!\n";
+         }
+      }
+
+
+      exit;
+      next;
+   }
+
+   my $jellyfin_track_id = $jf_entry->{itemid};
+   my $jellyfin_date_str = $jf_entry->{lastplayeddate};
+   my $jellyfin_play_count = $jf_entry->{playcount} || 0;
+   my $jellyfin_rating = defined $jf_entry->{rating} ? $jf_entry->{rating} : 0;
+
+   if( !$jellyfin_rating)
+   {
+      $jellyfin_rating = 0;
+   }
+
    my $itune_rating_jellyfin = 0;
    if ($itunes_rating_raw > 0) {
       # Convert iTunes 0-100 scale directly to Jellyfin's 0.0-10.0 scale
@@ -122,12 +183,19 @@ for (my $i = 1; $i <= $count; $i++) {
       # print "it rating: raw [$itunes_rating_raw] cnv [$itune_rating_jellyfin]\n";
    }
 
-   # Process iTunes last played date
+   # Extract the iTunes Last Played Date
+   my $played_date_variant = $track->PlayedDate;
    my $itunes_time         = undef;
    my $it_orig_date_str    = 'N\A';
-
    if ($played_date_variant && ref($played_date_variant))
    {
+      # Force the COM object to coerce itself into a strict text string (VT_BSTR = 8).
+      # WARNING: Seems iTunes time is a LOCAL time. localtime->strptime parses the date string as a local time and converts to GMT.
+      # The Jellyfin DB stores the time in GMT so this is a necessary step.
+      # Aaaggghhh! On minnie the iTunes time is GMT, on tufty it is localtime
+      # That doesn't seem to right either.
+      # The date string returned by the COM object is the same as the value displayed in iTunes which
+      # is therefore presumably the localtime.
       my $date_string = eval { $played_date_variant->As(8); };
       $it_orig_date_str = $date_string;
       if ($date_string && $date_string ne '' && $date_string ne '00:00:00')
@@ -161,64 +229,28 @@ for (my $i = 1; $i <= $count; $i++) {
             $itunes_time = gmtime($itunes_time->epoch);
          }
       }
-   }
-
-   # Trim leading and trailing whitespaces cleanly via Regex
-   # \s+ matches any whitespace characters. ^ looks at the start, $ looks at the end.
-   $name   =~ s/^\s+|\s+$//g;
-   $album  =~ s/^\s+|\s+$//g;
-   $artist =~ s/^\s+|\s+$//g;
-
-
-   # 5. Look up the track metadata from the pre-built Jellyfin map
-   my $track_key = build_track_key($artist, $album, $name);
-   my $jf_entry = $jellyfin_track_map{$track_key};
-
-   # No Jellyfin userdata for this track - I there is no date then move to next track
-   # else lookup the track in the Jellyfin DB to get the itemid and then write a record to the queue file
-   # else if there is no jellyfin track then next track
-   if (!$jf_entry)
-   {
-      if (!$itunes_time)
+      else
       {
+         # No date which may be because there is an exclusion rating so need to ensure that is
+         # tranferred to Jellyfin as well.  This is a special case where the track has been rated but not played.
+         if ($itune_rating_jellyfin > 0)
+         {
+            if( $jellyfin_rating != $itune_rating_jellyfin )
+            {
+               if( !$jellyfin_play_count )
+               {
+                  $jellyfin_play_count = 0;
+               }
+               # ITEM_GUID|USER_GUID|LAST_PLAYED_DATE|RATING
+               $it_jf_updates .= "$jellyfin_track_id|$user_id|$jellyfin_date_str|$itune_rating_jellyfin\n";
+            }
+         }
          next;
       }
-      $lookup_sth->execute($name, $album, $artist);
-      my ($jellyfin_track_id) = $lookup_sth->fetchrow_array();
-      $lookup_sth->finish();
-
-      my $itunes_date_str = $itunes_time->strftime("%Y-%m-%d %H:%M:%S");
-      # ITEM_GUID|USER_GUID|LAST_PLAYED_DATE|RATING
-      $it_jf_updates .= "$jellyfin_track_id|$user_id|$itunes_date_str|$itune_rating_jellyfin\n";
-      next;
    }
-
-   my $jellyfin_track_id = $jf_entry->{itemid};
-   my $jellyfin_date_str = $jf_entry->{lastplayeddate};
-   my $jellyfin_play_count = $jf_entry->{playcount} || 0;
-   my $jellyfin_rating = defined $jf_entry->{rating} ? $jf_entry->{rating} : 0;
-
-   if( !$jellyfin_rating)
+   else
    {
-      $jellyfin_rating = 0;
-   }
-
-   if (!$itunes_time)
-   {
-      # No date which may be because there is an exclusion rating so need to ensure that is
-      # tranferred to Jellyfin as well.  This is a special case where the track has been rated but not played.
-      if ($itune_rating_jellyfin > 0)
-      {
-         if( $jellyfin_rating != $itune_rating_jellyfin )
-         {
-            if( !$jellyfin_play_count )
-            {
-               $jellyfin_play_count = 0;
-            }
-            # ITEM_GUID|USER_GUID|LAST_PLAYED_DATE|RATING
-            $it_jf_updates .= "$jellyfin_track_id|$user_id|$jellyfin_date_str|$itune_rating_jellyfin\n";
-         }
-      }
+      # print "No iTunes last played date for: [$artist] - [$name] (Album: $album)\n";
       next;
    }
 
@@ -297,7 +329,6 @@ print "Total unmapped iTunes tracks missed: $unmapped_count\n";
 print "========================================\n";
 
 CLEANEXIT:
-
 $dbh->disconnect();
 $itunes = undef;
 undef $itunes;
@@ -312,30 +343,58 @@ sub build_jellyfin_track_map {
          b.Name AS name,
          b.Album AS album,
          b.Artists AS artist,
+         b.Path AS path,
          u.UserId AS userid,
          strftime('%Y-%m-%d %H:%M:%S', u.LastPlayedDate) AS lastplayeddate,
          u.PlayCount AS playcount,
          u.Rating AS rating
       FROM BaseItems b
       LEFT JOIN UserData u
-         ON b.Id = u.ItemId AND LOWER(u.CustomDataKey) = LOWER(b.Id)
+         ON b.Id = u.ItemId
+         -- 2. Moved UserData-specific filters here so they don't break the LEFT JOIN
+         AND u.LastPlayedDate IS NOT NULL
+         AND (LOWER(u.CustomDataKey) = LOWER(b.Id) OR u.CustomDataKey IS NULL OR u.CustomDataKey = '')
+         AND (u.UserId = ? or u.UserId is NULL)
       WHERE b.Type = 'MediaBrowser.Controller.Entities.Audio.Audio'
-         AND u.UserId = ?
 SQL
    $sth->execute($user_id);
 
    while (my $row = $sth->fetchrow_hashref()) {
+      my $location = $row->{path};
       my $artist = defined $row->{artist} ? $row->{artist} : '';
       my $album  = defined $row->{album} ? $row->{album} : '';
       my $name   = defined $row->{name} ? $row->{name} : '';
-      my $key    = build_track_key($artist, $album, $name);
 
-      $track_map{$key} = {
+      if( !defined $row->{path} )
+      {
+         print "WARN: build_jellyfin_track_map: No path for $artist:$album:$name\n";
+         next;
+      }
+
+      # There appears to be problem in that there can be duplicate Artist/Album/Track entries in the JF db
+      # This is because there are multiple versions of the same albums, ie. different remixes, each having the
+      # same tracks. The only difference is in the path name.
+      # the Jellyfin 'baseitems.path' looks like:
+      # /music/alac/01 pop-rock/Bob Dylan - Blonde On Blonde (rm2013) (1966)/13 Obviously 5 Believers.m4a
+      # whereas the iTunes path looks like:
+      # \\NASUG\public\music\alac\01 pop-rock\Bob Dylan - Blonde On Blonde (rm2013) (1966)\13 Obviously 5 Believers.m4a
+
+      # maybe it would be better to use the path as the key and convert the iTunes path to a Jellyfin path.
+      # But that would be a lot of work and would require a lot of testing.
+      my $key    = build_track_key($location);
+      my $md5 = md5_hex($key);
+      # print  "build_jellyfin_track_map: $artist:$album:$name:$location: [$key] [$md5]\n";
+      $track_map{$md5} = {
          userid          => $row->{userid} || $user_id,
          itemid          => $row->{itemid},
          lastplayeddate  => $row->{lastplayeddate},
          playcount       => $row->{playcount} || 0,
          rating          => defined $row->{rating} ? $row->{rating} : 0,
+         artist          => $artist,
+         album           => $album,
+         name            => $name,
+         path            => $location,
+         key             => $key
       };
    }
 
@@ -343,21 +402,29 @@ SQL
    return %track_map;
 }
 
+# Jellyfin path is like
+# /music/alac/01 pop-rock/Bob Dylan - Blonde On Blonde (rm2013) (1966)/13 Obviously 5 Believers.m4a
+# whereas the iTunes path looks like:
+# \\NASUG\public\music\alac\01 pop-rock\Bob Dylan - Blonde On Blonde (rm2013) (1966)\13 Obviously 5 Believers.m4a
 sub build_track_key {
-   my @parts = @_;
-   my @normalized;
+   my ($path) = @_;
+   my $key = $path;
 
-   foreach my $part (@parts) {
-      $part = '' unless defined $part;
-      $part = NFC($part);
-      $part =~ s/[\x{2018}\x{2019}\x{201B}\x{2032}]/'/g;
-      $part =~ s/[\x{201C}\x{201D}\x{2033}]/"/g;
-      $part =~ s/\s+/ /g;
-      $part =~ s/^\s+|\s+$//g;
-      push @normalized, lc $part;
-   }
+   $key = '' unless defined $key;
+   $key = NFC($key);
+   $key =~ s/[\x{2018}\x{2019}\x{201B}\x{2032}]/'/g;
+   $key =~ s/[\x{201C}\x{201D}\x{2033}]/"/g;
+   $key =~ s/\s+/ /g;
+   $key =~ s/^\s+|\s+$//g;
 
-   return join("\x1F", @normalized);
+   $key =~ s/^\/music\///;
+   $key =~ s/^\\\\NASUG\\public\\music\\//;
+   $key =~ s/\\/\//g;
+
+   # utf8::downgrade($key, 1);
+   # print "build_track_key: $path -> $key\n";
+
+   return lc($key);
 }
 
 sub writeitjfsyncfile
