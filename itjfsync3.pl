@@ -21,12 +21,30 @@ BEGIN {
    else {
       package NoOpLogger;
       sub new { bless {}, shift }
-      sub info {
-         my $self = shift;
-         my $msg  = join('', @_);
-         my $ts   = strftime('%y-%m-%d %H:%M:%S', localtime());
+
+      sub _emit {
+         my ($self, @parts) = @_;
+         my @expanded;
+         foreach my $part (@parts) {
+            if (ref($part) eq 'CODE') {
+               push @expanded, $part->();
+            }
+            else {
+               push @expanded, $part;
+            }
+         }
+         my $msg = join('', @expanded);
+         my $ts  = POSIX::strftime('%y-%m-%d %H:%M:%S', localtime());
          print "$ts $msg\n";
       }
+
+      sub debug {
+         my $self = shift;
+         # $self->_emit(@_);
+      }
+      sub info  { my $self = shift; $self->_emit(@_); }
+      sub warn  { my $self = shift; $self->_emit(@_); }
+      sub error { my $self = shift; $self->_emit(@_); }
       package main;
    }
 }
@@ -391,7 +409,7 @@ sub build_track_key {
    $key =~ s/^\s+|\s+$//g;
 
    $key =~ s/^\/music\///;
-   $key =~ s/^\\\\NASUG\\public\\music\\//;
+   $key =~ s/^\\\\NASUG\\public\\music\\//i;
    $key =~ s/\\/\//g;
 
    $key = lc($key);
