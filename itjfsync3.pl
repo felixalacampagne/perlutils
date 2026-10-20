@@ -9,16 +9,29 @@ use Getopt::Std;
 use File::Copy;
 use File::Basename; # Core module to cleanly parse paths, file names, and extensions
 use Unicode::Normalize qw(NFC);
-use Digest::MD5 qw(md5_hex);
-use Data::Dumper;
-$Data::Dumper::Useqq = 1; # This forces hidden characters like \n to show up clearly
 
-# WARNING: This does not handle the case where the Jellyfin DB does not contain a UserData
-# entry for a track that has been played in iTunes.  In that case, the track will be
-# skipped and not synced to Jellyfin.
-# To handle such missing tracks will require an update to the itunes-update file
-# processor which runs on the NAS as well as updates to this script to select
-# tracks which have no UserData and to handle them appropriately.
+# cpanm Log::Log4perl
+BEGIN {
+   if (eval { require Log::Log4perl; Log::Log4perl->import(qw(:easy)); 1; }) {
+      Log::Log4perl->easy_init({
+         level  => 'INFO',
+         layout => '%d{yy-MM-dd HH:mm:ss} %m%n',
+      });
+   }
+   else {
+      package NoOpLogger;
+      sub new { bless {}, shift }
+      sub info {
+         my $self = shift;
+         my $msg  = join('', @_);
+         my $ts   = strftime('%y-%m-%d %H:%M:%S', localtime());
+         print "$ts $msg\n";
+      }
+      package main;
+   }
+}
+
+my $logger = eval { Log::Log4perl->get_logger(); } || NoOpLogger->new();
 
 my $VERSION="4.0.0";
 
@@ -53,13 +66,13 @@ if( $opts{"u"})
 
 my $user_id = undef; #
 
-print "Connecting to iTunes COM interface...\n";
+$logger->info("Connecting to iTunes COM interface...");
 my $itunes = Win32::OLE->new('iTunes.Application')
     or die "iTunes could not be started: " . Win32::OLE->LastError();
 
 
 # Connect to the Jellyfin SQLite Database with strict Unicode mappings
-print "Connecting to Jellyfin Database...\n";
+$logger->info("Connecting to Jellyfin Database...");
 my $dbh = DBI->connect("dbi:SQLite:dbname=$jellyfin_db_path", "", "", {
     RaiseError         => 1,
     AutoCommit         => 1,
@@ -79,11 +92,11 @@ if (!$user_id)
 }
 else
 {
-   print "Found User ID for '$jfuser': $user_id\n";
+   $logger->info("Found User ID for '$jfuser': $user_id");
 }
 
 my %jellyfin_track_map = build_jellyfin_track_map($dbh, $user_id);
-print "Loaded Jellyfin track map for '$jfuser': " . scalar(keys %jellyfin_track_map) . " entries\n";
+$logger->info("Loaded Jellyfin track map for '$jfuser': " . scalar(keys %jellyfin_track_map) . " entries");
 
 my $it_jf_updates = "";  # ITEM_GUID|USER_GUID|LAST_PLAYED_DATE|RATING
 my $library_source = $itunes->LibrarySource;
@@ -91,14 +104,14 @@ my $playlist       = $library_source->Playlists->ItemByName("Music");
 my $tracks         = $playlist->Tracks;
 my $count          = $tracks->Count;
 
-print "Found $count tracks in iTunes. Starting bidirectional sync...\n";
+$logger->info("Found $count tracks in iTunes. Starting bidirectional sync...");
 
 my $unmapped_count = 0;
 my $processed_Count = 0;
 # 4. Process Tracks
 for (my $i = 1; $i <= $count; $i++) {
    $processed_Count++;
-   print ("Processing track $processed_Count of $count...\n") if ($processed_Count % 200 == 0);
+   $logger->info("Processing track $processed_Count of $count...") if ($processed_Count % 200 == 0);
    my $track = $tracks->Item($i);
    next unless $track;
 
@@ -108,11 +121,9 @@ for (my $i = 1; $i <= $count; $i++) {
    my $it_location = $track->Location || '';
    if(!$it_location)
    {
-      print "WARN: Missing iTunes file for track: $artist: $album: $name\n";
+      $logger->info("WARN: Missing iTunes file for track: $artist: $album: $name");
       next;
    }
-
-   # print "it: $artist: $album: $name: $it_location\n";
 
    # Trim leading and trailing whitespaces cleanly via Regex
    # \s+ matches any whitespace characters. ^ looks at the start, $ looks at the end.
@@ -124,45 +135,11 @@ for (my $i = 1; $i <= $count; $i++) {
 
    # 5. Look up the track metadata from the pre-built Jellyfin map
    my $track_key = build_track_key($it_location);
-   my $md5 =  md5_hex($track_key);
-   my $jf_entry = $jellyfin_track_map{$md5};
+   my $jf_entry = $jellyfin_track_map{$track_key};
 
    if (!$jf_entry) {
-      print "WARN: No Jellyfin DB Entry found: $artist: $album: $name: $it_location: [$md5] [$track_key] \n";
-      #print "" . Dumper($track_key) ."\n";
-      #print "" . Dumper(\%jellyfin_track_map) . "\n";
+      $logger->warn("WARN: No Jellyfin DB Entry found: $artist: $album: $name: $it_location: [$track_key] ");
       $unmapped_count++;
-      my $hash_key_entry = $jellyfin_track_map{"1b23eebe28362ed358ba29bde865eb9e"};
-      my $hash_key = $hash_key_entry->{key};
-
-      # Convert both strings into arrays of their exact byte values
-      my @lookup_bytes = unpack("C*", $track_key);
-      my @hash_bytes   = unpack("C*", $hash_key);
-
-      print "Lookup string length: " . scalar(@lookup_bytes) . " bytes\n";
-      print "Hash key string length:   " . scalar(@hash_bytes) . " bytes\n";
-
-      # Loop through and find exactly where they diverge
-      my $max_len = scalar(@lookup_bytes) > scalar(@hash_bytes) ? scalar(@lookup_bytes) : scalar(@hash_bytes);
-
-      print "\n--- BYTE BY BYTE COMPARISON ---\n";
-      print "POS\tCHAR\tLOOKUP BYTE\tHASH BYTE\n";
-      print "--------------------------------------\n";
-
-      for (my $i = 0; $i < $max_len; $i++) {
-         my $l_byte = $lookup_bytes[$i] // 'END';
-         my $h_byte = $hash_bytes[$i]   // 'END';
-
-         # Get a printable character if possible
-         my $l_char = ($l_byte ne 'END' && $l_byte >= 32 && $l_byte <= 126) ? chr($l_byte) : '?';
-
-         if ($l_byte ne $h_byte) {
-            print "[$i]\t'$l_char'\t$l_byte\t\t$h_byte  <-- MISMATCH HERE!\n";
-         }
-      }
-
-
-      exit;
       next;
    }
 
@@ -222,7 +199,7 @@ for (my $i = 1; $i <= $count; $i++) {
 
          # If any patterns match cleanly, map the string output for your Jellyfin comparisons
          if (!$itunes_time) {
-            warn "WARN: $artist: $album: $name: unrecognized date format: '$date_string'\n";
+            $logger->info("WARN: $artist: $album: $name: unrecognized date format: '$date_string'");
          }
          else
          {
@@ -250,7 +227,7 @@ for (my $i = 1; $i <= $count; $i++) {
    }
    else
    {
-      # print "No iTunes last played date for: [$artist] - [$name] (Album: $album)\n";
+      $logger->debug("No iTunes last played date for: [$artist] - [$name] (Album: $album)");
       next;
    }
 
@@ -279,12 +256,12 @@ for (my $i = 1; $i <= $count; $i++) {
       my $itep = $itunes_time->epoch;
       my $jfep = $jellyfin_time ? $jellyfin_time->epoch : 0;
       my $test = ($itep > $jfep) ? "TRUE" : "FALSE";
-      # print("it>jf Times: itunes $itep > jellyfin $jfep : $test \n");
       my $itunes_date_str = $itunes_time->strftime("%Y-%m-%d %H:%M:%S");
       $itunes_date_str = $itunes_date_str;
+
       my $rating = $itune_rating_jellyfin > $jellyfin_rating ? $itune_rating_jellyfin : $jellyfin_rating;
 
-      print "it>jf: $artist: $album: $name: itORIG:$it_orig_date_str itGMT:$itunes_time itDTSTR:$itunes_date_str jfORIG:$jellyfin_date_str itep:$itep jfep: $jfep\n";
+      $logger->info("it>jf: $artist: $album: $name: itORIG:$it_orig_date_str itGMT:$itunes_time itDTSTR:$itunes_date_str jfORIG:$jellyfin_date_str itep:$itep jfep: $jfep");
       # goto CLEANEXIT;
       $it_jf_updates .= "$jellyfin_track_id|$user_id|$itunes_date_str|$rating\n";
     }
@@ -296,13 +273,13 @@ for (my $i = 1; $i <= $count; $i++) {
       my $date_for_itunes = gmtime($jfep)->strftime("%b %e, %Y %H:%M:%S");
       $date_for_itunes = Variant(VT_DATE, $date_for_itunes);
 
-      print "jf>it: $artist: $album: $name: jfORIG:$jellyfin_date_str jfTIME:$jellyfin_time itORIG:$it_orig_date_str itGMT:$itunes_time jfDTSTR:$date_for_itunes itep:$itep jfep: $jfep\n";
+      $logger->info("jf>it: $artist: $album: $name: jfORIG:$jellyfin_date_str jfTIME:$jellyfin_time itORIG:$it_orig_date_str itGMT:$itunes_time jfDTSTR:$date_for_itunes itep:$itep jfep: $jfep");
       # goto CLEANEXIT;
       eval {
          $track->{PlayedDate} = $date_for_itunes;
-         #print "Synced ?? iTunes (Date Only): [$artist] - [$name] (Album: $album): $date_for_itunes\n";
+         #$logger->info("Synced ?? iTunes (Date Only): [$artist] - [$name] (Album: $album): $date_for_itunes");
       };
-      if ($@) { warn "WARN: $artist: $album: $name: Error writing to iTunes: $@\n"; }
+      if ($@) { $logger->info("WARN: $artist: $album: $name: Error writing to iTunes: $@"); }
 
       eval {
          my $current_itunes_count = $track->PlayedCount || 0;
@@ -312,21 +289,21 @@ for (my $i = 1; $i <= $count; $i++) {
          if ($current_itunes_count == 0 && $jellyfin_play_count > 0)
          {
             $track->{PlayedCount} = $new_count;
-            print "jf->it: $artist: $album: $name: Synced Count: $new_count\n";
+            $logger->info("jf->it: $artist: $album: $name: Synced Count: $new_count");
          }
 
 
       };
-      if ($@) { warn "WARN: $artist: $album: $name: Error writing to iTunes: $@\n"; }
+      if ($@) { $logger->info("WARN: $artist: $album: $name: Error writing to iTunes: $@"); }
     }
 }
 
 writeitjfsyncfile($it_jf_updates);
 
-print "\n========================================\n";
-print "Sync completed successfully.\n";
-print "Total unmapped iTunes tracks missed: $unmapped_count\n";
-print "========================================\n";
+$logger->info("\n========================================");
+$logger->info("Sync completed successfully.");
+$logger->info("Total unmapped iTunes tracks missed: $unmapped_count");
+$logger->info("========================================");
 
 CLEANEXIT:
 $dbh->disconnect();
@@ -367,24 +344,24 @@ SQL
 
       if( !defined $row->{path} )
       {
-         print "WARN: build_jellyfin_track_map: No path for $artist:$album:$name\n";
+         $logger->info("WARN: build_jellyfin_track_map: No path for $artist:$album:$name");
          next;
       }
 
-      # There appears to be problem in that there can be duplicate Artist/Album/Track entries in the JF db
+      # Use the path as the key as there can be duplicate Artist/Album/Track entries.
       # This is because there are multiple versions of the same albums, ie. different remixes, each having the
       # same tracks. The only difference is in the path name.
-      # the Jellyfin 'baseitems.path' looks like:
+      # The Jellyfin 'baseitems.path' looks like:
       # /music/alac/01 pop-rock/Bob Dylan - Blonde On Blonde (rm2013) (1966)/13 Obviously 5 Believers.m4a
       # whereas the iTunes path looks like:
       # \\NASUG\public\music\alac\01 pop-rock\Bob Dylan - Blonde On Blonde (rm2013) (1966)\13 Obviously 5 Believers.m4a
+      # build_track_key strips of the different prefixes and replace the \ with / so the paths match. The path
+      # must be lowercased as the iTunes path is sometimes does not match the case of the actual filename.
 
-      # maybe it would be better to use the path as the key and convert the iTunes path to a Jellyfin path.
-      # But that would be a lot of work and would require a lot of testing.
       my $key    = build_track_key($location);
-      my $md5 = md5_hex($key);
-      # print  "build_jellyfin_track_map: $artist:$album:$name:$location: [$key] [$md5]\n";
-      $track_map{$md5} = {
+      $logger->debug(sub{ sprintf("build_jellyfin_track_map: %s:%s:%s:%s: [%s]", $artist, $album, $name, $location, $key) });
+
+      $track_map{$key} = {
          userid          => $row->{userid} || $user_id,
          itemid          => $row->{itemid},
          lastplayeddate  => $row->{lastplayeddate},
@@ -402,10 +379,6 @@ SQL
    return %track_map;
 }
 
-# Jellyfin path is like
-# /music/alac/01 pop-rock/Bob Dylan - Blonde On Blonde (rm2013) (1966)/13 Obviously 5 Believers.m4a
-# whereas the iTunes path looks like:
-# \\NASUG\public\music\alac\01 pop-rock\Bob Dylan - Blonde On Blonde (rm2013) (1966)\13 Obviously 5 Believers.m4a
 sub build_track_key {
    my ($path) = @_;
    my $key = $path;
@@ -421,10 +394,36 @@ sub build_track_key {
    $key =~ s/^\\\\NASUG\\public\\music\\//;
    $key =~ s/\\/\//g;
 
-   # utf8::downgrade($key, 1);
-   # print "build_track_key: $path -> $key\n";
+   $key = lc($key);
+   $logger->debug( sub{ sprintf("build_track_key: %s -> %s", $path, $key) });
 
-   return lc($key);
+   return $key;
+}
+
+sub debug_compare_strings {
+   my ($left, $right) = @_;
+
+   my @left_bytes  = unpack("C*", defined $left ? $left : '');
+   my @right_bytes = unpack("C*", defined $right ? $right : '');
+
+   $logger->info("Lookup string length: ",  scalar(@left_bytes),  " bytes");
+   $logger->info("Hash key string length:   " , scalar(@right_bytes) , " bytes");
+
+   my $max_len = scalar(@left_bytes) > scalar(@right_bytes) ? scalar(@left_bytes) : scalar(@right_bytes);
+
+   $logger->info("\n--- BYTE BY BYTE COMPARISON ---");
+   $logger->info("POS\tCHAR\tLOOKUP BYTE\tHASH BYTE");
+   $logger->info("--------------------------------------");
+
+   for (my $i = 0; $i < $max_len; $i++) {
+      my $l_byte = $left_bytes[$i] // 'END';
+      my $r_byte = $right_bytes[$i] // 'END';
+      my $l_char = ($l_byte ne 'END' && $l_byte >= 32 && $l_byte <= 126) ? chr($l_byte) : '?';
+
+      if ($l_byte ne $r_byte) {
+         $logger->info("[$i]\t'$l_char'\t$l_byte\t\t$r_byte  <-- MISMATCH HERE!");
+      }
+   }
 }
 
 sub writeitjfsyncfile
@@ -437,11 +436,11 @@ sub writeitjfsyncfile
       open(my $fh, '>>', $queue_file) or die "CRITICAL ERROR: Cannot open queue file for writing: $!";
       print $fh $data;
       close($fh);
-      print "Queue file written successfully with updated track data.\n";
+      $logger->info("Queue file written successfully with updated track data.");
    }
    else
    {
-      print "No updates to write to the queue file. It remains unchanged.\n";
+      $logger->info("No updates to write to the queue file. It remains unchanged.");
    }
 }
 
@@ -450,7 +449,7 @@ sub backupfile
    my ($file) = @_;
 
    if (!-e $file || -s $file == 0) {
-      print "$file is empty or missing. Nothing to backup.\n";
+      $logger->info("$file is empty or missing. Nothing to backup.");
       return;
    }
 
@@ -464,8 +463,8 @@ sub backupfile
     my $backup_file = $directory . $filename . "_" . $timestamp . $extension;
 
     if (copy($file, $backup_file)) {
-        print "$file backed up successfully to: $backup_file\n";
+        $logger->info("$file backed up successfully to: $backup_file");
     } else {
-        warn "Copy failed ($!)\n";
+        $logger->info("Copy failed ($!)");
     }
 }
