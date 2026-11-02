@@ -51,7 +51,7 @@ BEGIN {
 
 my $logger = eval { Log::Log4perl->get_logger(); } || NoOpLogger->new();
 
-my $VERSION="4.0.0";
+my $VERSION="4.0.1";
 
 # Enforces that standard output console windows handle wide printed symbols cleanly
 binmode(STDOUT, ":encoding(UTF-8)");
@@ -127,7 +127,8 @@ $logger->info("Found $count tracks in iTunes. Starting bidirectional sync...");
 my $unmapped_count = 0;
 my $processed_Count = 0;
 # 4. Process Tracks
-for (my $i = 1; $i <= $count; $i++) {
+for (my $i = 1; $i <= $count; $i++)
+{
    $processed_Count++;
    $logger->info("Processing track $processed_Count of $count...") if ($processed_Count % 200 == 0);
    my $track = $tracks->Item($i);
@@ -180,8 +181,11 @@ for (my $i = 1; $i <= $count; $i++) {
 
    # Extract the iTunes Last Played Date
    my $played_date_variant = $track->PlayedDate;
-   my $itunes_time         = undef;
+   # 1961 causes a problem with strftime - program exits with no error message
+   # my $itunes_time         = gmtime(localtime->strptime('10/06/1961 17:00:00', "%d/%m/%Y %H:%M:%S")->epoch);
+   my $itunes_time         = undef; # Time::Piece->strptime('01/01/1970 17:00:00', "%d/%m/%Y %H:%M:%S");
    my $it_orig_date_str    = 'N\A';
+
    if ($played_date_variant && ref($played_date_variant))
    {
       # Force the COM object to coerce itself into a strict text string (VT_BSTR = 8).
@@ -243,12 +247,6 @@ for (my $i = 1; $i <= $count; $i++) {
          next;
       }
    }
-   else
-   {
-      $logger->debug("No iTunes last played date for: [$artist] - [$name] (Album: $album)");
-      next;
-   }
-
    # Parse Jellyfin's timestamp if it exists
    my $jellyfin_time = undef;
    if ($jellyfin_date_str)
@@ -269,8 +267,9 @@ for (my $i = 1; $i <= $count; $i++) {
    # 6. Evaluation Logic
    my $itunes_play_count = $track->PlayedCount || 0;
 
-   # Scenario A: iTunes has a more recent listen -> Update Jellyfin
-   if ($itunes_time && (!$jellyfin_time || $itunes_time > $jellyfin_time)) {
+   # When iTunes has a more recent listen -> Update Jellyfin
+   if ($itunes_time && (!$jellyfin_time || $itunes_time > $jellyfin_time))
+   {
       my $itep = $itunes_time->epoch;
       my $jfep = $jellyfin_time ? $jellyfin_time->epoch : 0;
       my $test = ($itep > $jfep) ? "TRUE" : "FALSE";
@@ -282,10 +281,10 @@ for (my $i = 1; $i <= $count; $i++) {
       $logger->info("it>jf: $artist: $album: $name: itORIG:$it_orig_date_str itGMT:$itunes_time itDTSTR:$itunes_date_str jfORIG:$jellyfin_date_str itep:$itep jfep: $jfep");
       # goto CLEANEXIT;
       $it_jf_updates .= "$jellyfin_track_id|$user_id|$itunes_date_str|$rating\n";
-    }
-    # Scenario B: Jellyfin has a more recent listen -> Update iTunes
-    elsif ($jellyfin_time && (!$itunes_time || $jellyfin_time > $itunes_time)) {
-
+   }
+   # When Jellyfin has a more recent listen -> Update iTunes
+   elsif ($jellyfin_time && (!$itunes_time || $jellyfin_time > $itunes_time))
+   {
       my $jfep = $jellyfin_time->epoch;
       my $itep = $itunes_time ? $itunes_time->epoch : 0;
       my $date_for_itunes = gmtime($jfep)->strftime("%b %e, %Y %H:%M:%S");
@@ -313,12 +312,12 @@ for (my $i = 1; $i <= $count; $i++) {
 
       };
       if ($@) { $logger->info("WARN: $artist: $album: $name: Error writing to iTunes: $@"); }
-    }
+   }
 }
 
 writeitjfsyncfile($it_jf_updates);
 
-$logger->info("\n========================================");
+$logger->info("========================================");
 $logger->info("Sync completed successfully.");
 $logger->info("Total unmapped iTunes tracks missed: $unmapped_count");
 $logger->info("========================================");
@@ -327,6 +326,12 @@ CLEANEXIT:
 $dbh->disconnect();
 $itunes = undef;
 undef $itunes;
+
+sub safeStr
+{
+   my ($val) = @_;
+   return $val ? $val : '';
+}
 
 sub build_jellyfin_track_map {
    my ($dbh, $user_id) = @_;
