@@ -16,6 +16,7 @@ BEGIN {
       Log::Log4perl->easy_init({
          level  => 'INFO',
          layout => '%d{yy-MM-dd HH:mm:ss} %m%n',
+         utf8  => 1
       });
    }
    else {
@@ -51,7 +52,7 @@ BEGIN {
 
 my $logger = eval { Log::Log4perl->get_logger(); } || NoOpLogger->new();
 
-my $VERSION="4.0.1";
+my $VERSION="4.0.2";
 
 # Enforces that standard output console windows handle wide printed symbols cleanly
 binmode(STDOUT, ":encoding(UTF-8)");
@@ -134,13 +135,19 @@ for (my $i = 1; $i <= $count; $i++)
    my $track = $tracks->Item($i);
    next unless $track;
 
+   # Extract track information into sanitized variables (except date which needs special handling)
    my $name   = $track->Name   || '';
    my $album  = $track->Album  || '';
    my $artist = $track->Artist || '';
    my $it_location = $track->Location || '';
+   my $itunes_rating_raw = $track->Rating || 0; # Returns 0, 20, 40, 60, 80, or 100
+
+   # Use tracklog for track details when writing a log message
+   my $tracklog = sprintf("%s: %s: %s", $artist, $album, $name);
+
    if(!$it_location)
    {
-      $logger->info("WARN: Missing iTunes file for track: $artist: $album: $name");
+      $logger->info("WARN: Missing iTunes file for track: $tracklog");
       next;
    }
 
@@ -150,14 +157,12 @@ for (my $i = 1; $i <= $count; $i++)
    $album  =~ s/^\s+|\s+$//g;
    $artist =~ s/^\s+|\s+$//g;
 
-   my $itunes_rating_raw = $track->Rating || 0; # Returns 0, 20, 40, 60, 80, or 100
-
    # 5. Look up the track metadata from the pre-built Jellyfin map
    my $track_key = build_track_key($it_location);
    my $jf_entry = $jellyfin_track_map{$track_key};
 
    if (!$jf_entry) {
-      $logger->warn("WARN: No Jellyfin DB Entry found: $artist: $album: $name: $it_location: [$track_key] ");
+      $logger->warn("WARN: No Jellyfin DB Entry found for track: $tracklog: $it_location: [$track_key] ");
       $unmapped_count++;
       next;
    }
@@ -179,20 +184,21 @@ for (my $i = 1; $i <= $count; $i++)
       # print "it rating: raw [$itunes_rating_raw] cnv [$itune_rating_jellyfin]\n";
    }
 
-   # Extract the iTunes Last Played Date
+   # Extract the iTunes Last Played Date.
+   # If present it will be a local time string using the Windows locale format which makes it difficult to
+   # parse with certainty. Since I only use the D/M/Y format that's all I'm really interested in but you
+   # never know when a Windows system might randomly change it's format back to the default US version.
+   # Once the date string is parsed into a date it is converted to GMT (UTC) and this is the value
+   # in itunes_time. I tried giving itunes_time a default value but that sort of broke the change detection
+   # logic so I keep the 'undef' as it is part of the logic. Any logging of the date must take this into
+   # account as the undef variable causes an error when used in a string insead of resulting in a value of 'undef'.
    my $played_date_variant = $track->PlayedDate;
-   # 1961 causes a problem with strftime - program exits with no error message
-   # my $itunes_time         = gmtime(localtime->strptime('10/06/1961 17:00:00', "%d/%m/%Y %H:%M:%S")->epoch);
-   my $itunes_time         = undef; # Time::Piece->strptime('01/01/1970 17:00:00', "%d/%m/%Y %H:%M:%S");
+   my $itunes_time         = undef;
    my $it_orig_date_str    = 'N\A';
 
    if ($played_date_variant && ref($played_date_variant))
    {
       # Force the COM object to coerce itself into a strict text string (VT_BSTR = 8).
-      # WARNING: Seems iTunes time is a LOCAL time. localtime->strptime parses the date string as a local time and converts to GMT.
-      # The Jellyfin DB stores the time in GMT so this is a necessary step.
-      # Aaaggghhh! On minnie the iTunes time is GMT, on tufty it is localtime
-      # That doesn't seem to right either.
       # The date string returned by the COM object is the same as the value displayed in iTunes which
       # is therefore presumably the localtime.
       my $date_string = eval { $played_date_variant->As(8); };
@@ -200,28 +206,29 @@ for (my $i = 1; $i <= $count; $i++)
       if ($date_string && $date_string ne '' && $date_string ne '00:00:00')
       {
          $date_string = substr($date_string, 0, 19);
-         # Dynamically parse the resulting text string based on your local Windows time layout
          eval {
-            # Layout Option 1: Standard European/UK format (e.g., "10/10/2026 17:00:15")
+            # Standard European/UK format (e.g., "10/10/2026 17:00:15")
             $itunes_time = localtime->strptime($date_string, "%d/%m/%Y %H:%M:%S");
-
          };
-         if ($@) {
-            eval {
-                  # Layout Option 2: Standard US format (e.g., "10/10/2026 05:00:15 PM")
+         if ($@)
+         {
+            eval # Standard US format (e.g., "10/10/2026 05:00:15 PM")
+            {
                   $itunes_time = localtime->strptime($date_string, "%m/%d/%Y %H:%M:%S");
             };
          }
-         if ($@) {
-            eval {
-                  # Layout Option 3: Standard ISO/Fallback format (e.g., "2026-10-10 17:00:15")
+         if ($@)
+         {
+            eval # Standard ISO/Fallback format (e.g., "2026-10-10 17:00:15")
+            {
                   $itunes_time = localtime->strptime($date_string, "%Y-%m-%d %H:%M:%S");
             };
          }
 
          # If any patterns match cleanly, map the string output for your Jellyfin comparisons
-         if (!$itunes_time) {
-            $logger->info("WARN: $artist: $album: $name: unrecognized date format: '$date_string'");
+         if (!$itunes_time)
+         {
+            $logger->info("WARN: $tracklog: unrecognized date format: '$date_string'");
          }
          else
          {
@@ -230,8 +237,9 @@ for (my $i = 1; $i <= $count; $i++)
       }
       else
       {
-         # No date which may be because there is an exclusion rating so need to ensure that is
-         # tranferred to Jellyfin as well.  This is a special case where the track has been rated but not played.
+         # Date variant did not return a value. This is not the same as the Date variant being null/undef.
+         # It could be because there an exclusion rating means it was never played
+         # so need to ensure the rating is tranferred to Jellyfin as well.
          if ($itune_rating_jellyfin > 0)
          {
             if( $jellyfin_rating != $itune_rating_jellyfin )
@@ -270,33 +278,30 @@ for (my $i = 1; $i <= $count; $i++)
    # When iTunes has a more recent listen -> Update Jellyfin
    if ($itunes_time && (!$jellyfin_time || $itunes_time > $jellyfin_time))
    {
-      my $itep = $itunes_time->epoch;
-      my $jfep = $jellyfin_time ? $jellyfin_time->epoch : 0;
-      my $test = ($itep > $jfep) ? "TRUE" : "FALSE";
       my $itunes_date_str = $itunes_time->strftime("%Y-%m-%d %H:%M:%S");
       $itunes_date_str = $itunes_date_str;
 
       my $rating = $itune_rating_jellyfin > $jellyfin_rating ? $itune_rating_jellyfin : $jellyfin_rating;
 
-      $logger->info("it>jf: $artist: $album: $name: itORIG:$it_orig_date_str itGMT:$itunes_time itDTSTR:$itunes_date_str jfORIG:$jellyfin_date_str itep:$itep jfep: $jfep");
+      $logger->info(sprintf("it->jf: %s: itGMT:%s jfGmt:%s", $tracklog, safeStr($itunes_time), safeStr($jellyfin_time)));
       # goto CLEANEXIT;
       $it_jf_updates .= "$jellyfin_track_id|$user_id|$itunes_date_str|$rating\n";
    }
    # When Jellyfin has a more recent listen -> Update iTunes
    elsif ($jellyfin_time && (!$itunes_time || $jellyfin_time > $itunes_time))
    {
+      # Strangely the date for setting the iTunes date played value needs to be in GMT - or at least that
+      # is what appear to be happening here, and the correct values are displayed in iTunes!
       my $jfep = $jellyfin_time->epoch;
-      my $itep = $itunes_time ? $itunes_time->epoch : 0;
       my $date_for_itunes = gmtime($jfep)->strftime("%b %e, %Y %H:%M:%S");
       $date_for_itunes = Variant(VT_DATE, $date_for_itunes);
 
-      $logger->info("jf>it: $artist: $album: $name: jfORIG:$jellyfin_date_str jfTIME:$jellyfin_time itORIG:$it_orig_date_str itGMT:$itunes_time jfDTSTR:$date_for_itunes itep:$itep jfep: $jfep");
+      $logger->info(sprintf("jf->it: %s: jfGMT:%s itGMT:%s", $tracklog, safeStr($jellyfin_time), safeStr($itunes_time)));
       # goto CLEANEXIT;
       eval {
          $track->{PlayedDate} = $date_for_itunes;
-         #$logger->info("Synced ?? iTunes (Date Only): [$artist] - [$name] (Album: $album): $date_for_itunes");
       };
-      if ($@) { $logger->info("WARN: $artist: $album: $name: Error writing to iTunes: $@"); }
+      if ($@) { $logger->info("WARN: $tracklog: Error writing to iTunes: $@"); }
 
       eval {
          my $current_itunes_count = $track->PlayedCount || 0;
@@ -306,12 +311,10 @@ for (my $i = 1; $i <= $count; $i++)
          if ($current_itunes_count == 0 && $jellyfin_play_count > 0)
          {
             $track->{PlayedCount} = $new_count;
-            $logger->info("jf->it: $artist: $album: $name: Synced Count: $new_count");
+            $logger->info("jf->it: $tracklog: Synced Count: $new_count");
          }
-
-
       };
-      if ($@) { $logger->info("WARN: $artist: $album: $name: Error writing to iTunes: $@"); }
+      if ($@) { $logger->info("WARN: $tracklog: Error writing to iTunes: $@"); }
    }
 }
 
