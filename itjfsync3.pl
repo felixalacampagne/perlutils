@@ -52,7 +52,7 @@ BEGIN {
 
 my $logger = eval { Log::Log4perl->get_logger(); } || NoOpLogger->new();
 
-my $VERSION="4.0.2";
+my $VERSION="4.0.3";
 
 # Enforces that standard output console windows handle wide printed symbols cleanly
 binmode(STDOUT, ":encoding(UTF-8)");
@@ -283,7 +283,7 @@ for (my $i = 1; $i <= $count; $i++)
 
       my $rating = $itune_rating_jellyfin > $jellyfin_rating ? $itune_rating_jellyfin : $jellyfin_rating;
 
-      $logger->info(sprintf("it->jf: %s: itGMT:%s jfGmt:%s", $tracklog, safeStr($itunes_time), safeStr($jellyfin_time)));
+      $logger->info(sprintf("it->jf: %s: itGMT:%s jfGmt:%s", $tracklog, safeDateStr($itunes_time), safeDateStr($jellyfin_time)));
       # goto CLEANEXIT;
       $it_jf_updates .= "$jellyfin_track_id|$user_id|$itunes_date_str|$rating\n";
    }
@@ -296,7 +296,7 @@ for (my $i = 1; $i <= $count; $i++)
       my $date_for_itunes = gmtime($jfep)->strftime("%b %e, %Y %H:%M:%S");
       $date_for_itunes = Variant(VT_DATE, $date_for_itunes);
 
-      $logger->info(sprintf("jf->it: %s: jfGMT:%s itGMT:%s", $tracklog, safeStr($jellyfin_time), safeStr($itunes_time)));
+      $logger->info(sprintf("jf->it: %s: jfGMT:%s itGMT:%s", $tracklog, safeDateStr($jellyfin_time), safeDateStr($itunes_time)));
       # goto CLEANEXIT;
       eval {
          $track->{PlayedDate} = $date_for_itunes;
@@ -334,6 +334,18 @@ sub safeStr
 {
    my ($val) = @_;
    return $val ? $val : '';
+}
+
+sub safeDateStr
+{
+   my ($val) = @_;
+   my $datestr = "";
+   eval
+   {
+      $datestr = $val->strftime("%Y-%m-%d %H:%M:%S");
+   };
+
+   return $datestr;
 }
 
 sub build_jellyfin_track_map {
